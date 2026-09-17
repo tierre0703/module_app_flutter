@@ -649,7 +649,7 @@ class _RoomChip extends StatelessWidget {
   }
 }
 
-class _QuickScenarioCard extends StatelessWidget {
+class _QuickScenarioCard extends StatefulWidget {
   const _QuickScenarioCard({
     required this.index,
     required this.scenario,
@@ -667,12 +667,53 @@ class _QuickScenarioCard extends StatelessWidget {
   final VoidCallback onEdit;
 
   @override
+  State<_QuickScenarioCard> createState() => _QuickScenarioCardState();
+}
+
+class _QuickScenarioCardState extends State<_QuickScenarioCard> {
+  /// Value while the user is dragging the slider. Null reverts the display to
+  /// the module's live PWM so the card stays synced with the device.
+  int? _dragValue;
+
+  Scenario get scenario => widget.scenario;
+
+  ChannelOutput? get sliderChannel => dimmerTargetChannel(
+      ModuleStore.shared.modules, scenario.sliderTargetName);
+
+  /// The slider's displayed value: the in-progress drag value, else the target
+  /// channel's live PWM (the module is the source of truth), falling back to
+  /// the stored default when no dimmer output is resolved.
+  int get _displayValue {
+    if (_dragValue != null) return _dragValue!;
+    final channel = sliderChannel;
+    if (channel != null) return channel.brightness.clamp(0, 100);
+    return scenario.sliderValue.clamp(0, 100);
+  }
+
+  Future<void> _onSliderChanged(int value) async {
+    final snapped = sliderChannel?.snapBrightness(value) ?? value;
+    final v = snapped.clamp(0, 100);
+    setState(() => _dragValue = v);
+    widget.onSliderChanged(v);
+    final ref = dimmerTargetRef(
+        ModuleStore.shared.modules, scenario.sliderTargetName);
+    if (ref != null) {
+      await ModuleStatusService.shared.setDimmerLevel(ref.$1.id, ref.$2, v);
+    }
+  }
+
+  void _onSliderEnd(double value) {
+    setState(() => _dragValue = null);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
+    final scenario = this.scenario;
     final isSlider = scenario.type == ScenarioType.manualSlider;
-    final sliderChannel = dimmerTargetChannel(
-        ModuleStore.shared.modules, scenario.sliderTargetName);
+    final sliderChannel = this.sliderChannel;
+    final sliderValue = _displayValue;
 
     // A scenario can carry a custom background color: then the whole card is
     // painted with it and the foreground flips to black/white for contrast.
@@ -690,7 +731,7 @@ class _QuickScenarioCard extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: onEdit,
+        onTap: widget.onEdit,
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -699,7 +740,7 @@ class _QuickScenarioCard extends StatelessWidget {
               Row(
                 children: [
                   ReorderableDragStartListener(
-                    index: index,
+                    index: widget.index,
                     child: Padding(
                       padding: const EdgeInsets.only(right: 8),
                       child: Icon(Icons.drag_indicator,
@@ -737,13 +778,13 @@ class _QuickScenarioCard extends StatelessWidget {
                   if (isSlider)
                     _IconActionButton(
                       icon: const Icon(Icons.open_in_full, size: 20),
-                      onTap: onOpenSlider,
+                      onTap: widget.onOpenSlider,
                       outlined: true,
                       fg: fg,
                       accent: accent,
                     )
                   else
-                    _RunButton(onTap: onRun),
+                    _RunButton(onTap: widget.onRun),
                 ],
               ),
               if (isSlider) ...[
@@ -767,15 +808,16 @@ class _QuickScenarioCard extends StatelessWidget {
                                 fontWeight: FontWeight.w700),
                           ),
                           child: Slider(
-                            value: scenario.sliderValue.toDouble(),
+                            value: sliderValue.toDouble(),
                             min: 0,
                             max: 100,
                             divisions:
                                 sliderChannel?.brightnessSliderDivisions ?? 100,
-                            label: '${scenario.sliderValue}%',
-                            onChanged: (v) => onSliderChanged(
+                            label: '$sliderValue%',
+                            onChanged: (v) => _onSliderChanged(
                                 sliderChannel?.snapBrightness(v.round()) ??
                                     v.round()),
+                            onChangeEnd: _onSliderEnd,
                           ),
                         ),
                       ),
@@ -784,7 +826,7 @@ class _QuickScenarioCard extends StatelessWidget {
                       SizedBox(
                         width: 40,
                         child: Text(
-                          '${scenario.sliderValue}%',
+                          '$sliderValue%',
                           textAlign: TextAlign.end,
                           style: TextStyle(
                               fontWeight: FontWeight.w800,

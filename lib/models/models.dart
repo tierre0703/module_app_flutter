@@ -650,13 +650,26 @@ extension InputActionStateX on InputActionState {
 /// the scenario editor; returns null when no dimmer output matches.
 ChannelOutput? dimmerTargetChannel(
     List<DeviceModule> modules, String targetName) {
+  final ref = dimmerTargetRef(modules, targetName);
+  if (ref == null) return null;
+  return ref.$1.channels[ref.$2];
+}
+
+/// Resolves the owning module and zero-based channel index a manual-dimmer
+/// scenario's [Scenario.sliderTargetName] points at, so `set_dimmer_level` can
+/// be issued on the right output.
+(DeviceModule, int)? dimmerTargetRef(
+    List<DeviceModule> modules, String targetName) {
   for (final module in modules) {
     if (module.type != ModuleType.dimmerDc &&
         module.type != ModuleType.dimmerAc) {
       continue;
     }
-    for (final channel in module.channels) {
-      if ('${channel.name} - ${module.name}' == targetName) return channel;
+    for (var i = 0; i < module.channels.length; i++) {
+      final channel = module.channels[i];
+      if ('${channel.name} - ${module.name}' == targetName) {
+        return (module, i);
+      }
     }
   }
   return null;
