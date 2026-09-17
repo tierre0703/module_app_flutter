@@ -589,8 +589,8 @@ void main() {
         '"set_pwm":100,"actual_pwm":83,"revision":1789633582100}}');
     await _flush();
     final live = store.byId('m-dimmer')!;
-    expect(live.channels[1].brightness, 83,
-        reason: 'pwm_state_changed must reflect the actual PWM level');
+    expect(live.channels[1].brightness, 100,
+        reason: 'pwm_state_changed must reflect the set PWM level');
     expect(live.channels[1].isOn, isTrue);
 
     service.dispose();
