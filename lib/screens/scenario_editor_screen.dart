@@ -10,6 +10,7 @@ import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 import '../data/mock_data.dart';
 import '../models/models.dart';
 import '../services/custom_color_store.dart';
+import '../services/module_status/module_status_service.dart';
 import '../services/module_store.dart';
 import '../services/room_store.dart';
 import '../theme/app_theme.dart';
@@ -39,6 +40,10 @@ class _ScenarioEditorScreenState extends State<ScenarioEditorScreen> {
       List.of(widget.scenario?.actions ?? const []);
   late String _sliderTargetName = widget.scenario?.sliderTargetName ?? '';
   late int _sliderValue = widget.scenario?.sliderValue ?? 50;
+
+  /// Value while the user is dragging the slider; null lets the thumb follow
+  /// the module's reported PWM (or [_sliderValue] when offline).
+  int? _dragValue;
 
   List<DeviceModule> _modules = const [];
   List<Room> _rooms = const [];
@@ -184,229 +189,273 @@ class _ScenarioEditorScreenState extends State<ScenarioEditorScreen> {
     }
   }
 
+  ChannelOutput? get _sliderTarget =>
+      dimmerTargetChannel(ModuleStore.shared.modules, _sliderTargetName);
+
+  (DeviceModule, int)? get _sliderRef =>
+      dimmerTargetRef(ModuleStore.shared.modules, _sliderTargetName);
+
+  /// The slider's displayed value: the in-progress drag value, else the target
+  /// channel's live PWM (module is the source of truth), falling back to the
+  /// stored default when no dimmer output is resolved.
+  int get _displaySliderValue {
+    if (_dragValue != null) return _dragValue!;
+    if (_sliderRef != null) {
+      return _sliderTarget!.brightness.clamp(0, 100);
+    }
+    return _sliderValue.clamp(0, 100);
+  }
+
+  Future<void> _onSliderChanged(int value) async {
+    final snapped = _sliderTarget?.snapBrightness(value) ?? value;
+    final v = snapped.clamp(0, 100);
+    setState(() {
+      _dragValue = v;
+      _sliderValue = v;
+    });
+    final ref = _sliderRef;
+    if (ref != null) {
+      await ModuleStatusService.shared.setDimmerLevel(ref.$1.id, ref.$2, v);
+    }
+  }
+
+  void _onSliderEnd(double value) {
+    setState(() => _dragValue = null);
+  }
+
   @override
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final l10n = AppLocalizations.of(context);
     final roomOptions = ['General', ..._rooms.map((r) => r.name)];
     final dimmerTargets = _dimmerTargets;
-    final sliderTarget = dimmerTargetChannel(_modules, _sliderTargetName);
 
-    return Scaffold(
-      appBar: AppBar(
-          title: Text(_isNew ? l10n.scenarioNewTitle : l10n.scenarioEditTitle)),
-      body: SafeArea(
-        top: false,
-        child: ListView(
-          padding: const EdgeInsets.all(AppSpacing.outerPadding),
-          children: [
-            Center(
-              child: InkWell(
-                borderRadius: BorderRadius.circular(48),
-                onTap: _pickIcon,
-                child: Stack(
+    return ListenableBuilder(
+      listenable: ModuleStore.shared,
+      builder: (context, _) {
+        final sliderTarget = _sliderTarget;
+        final sliderValue = _displaySliderValue;
+        return Scaffold(
+          appBar: AppBar(
+              title: Text(
+                  _isNew ? l10n.scenarioNewTitle : l10n.scenarioEditTitle)),
+          body: SafeArea(
+            top: false,
+            child: ListView(
+              padding: const EdgeInsets.all(AppSpacing.outerPadding),
+              children: [
+                Center(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(48),
+                    onTap: _pickIcon,
+                    child: Stack(
+                      children: [
+                        IconAvatar(icon: _icon, size: 84, filled: true),
+                        Positioned(
+                          right: 0,
+                          bottom: 0,
+                          child: CircleAvatar(
+                            radius: 14,
+                            backgroundColor:
+                                Theme.of(context).scaffoldBackgroundColor,
+                            child: Icon(Icons.edit, size: 14, color: onSurface),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                TextField(
+                  controller: _nameController,
+                  decoration: InputDecoration(
+                      labelText: l10n.scenarioNameLabel,
+                      prefixIcon: const Icon(Icons.label_outline)),
+                ),
+                const SizedBox(height: 20),
+                SectionHeader(l10n.scenarioTypeSection),
+                SegmentedButton<ScenarioType>(
+                  segments: [
+                    ButtonSegment(
+                        value: ScenarioType.tapToRun,
+                        label: Text(l10n.scenarioTypeTapToRun),
+                        icon: const Icon(Icons.touch_app_outlined)),
+                    ButtonSegment(
+                        value: ScenarioType.manualSlider,
+                        label: Text(l10n.scenarioTypeManualSlider),
+                        icon: const Icon(Icons.tune)),
+                  ],
+                  selected: {_type},
+                  onSelectionChanged: (s) => setState(() => _type = s.first),
+                ),
+                const SizedBox(height: 20),
+                DropdownButtonFormField<String>(
+                  initialValue: roomOptions.contains(_roomName)
+                      ? _roomName
+                      : roomOptions.first,
+                  decoration: InputDecoration(
+                      labelText: l10n.scenarioRoomLabel,
+                      prefixIcon: const Icon(Icons.meeting_room_outlined)),
+                  items: [
+                    for (final room in roomOptions)
+                      DropdownMenuItem(value: room, child: Text(room))
+                  ],
+                  onChanged: (value) =>
+                      setState(() => _roomName = value ?? _roomName),
+                ),
+                const SizedBox(height: 20),
+                SectionHeader(l10n.scenarioBackgroundSection),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
                   children: [
-                    IconAvatar(icon: _icon, size: 84, filled: true),
-                    Positioned(
-                      right: 0,
-                      bottom: 0,
-                      child: CircleAvatar(
-                        radius: 14,
-                        backgroundColor:
-                            Theme.of(context).scaffoldBackgroundColor,
-                        child: Icon(Icons.edit, size: 14, color: onSurface),
+                    _ColorSwatch(
+                      label: l10n.scenarioBackgroundDefault,
+                      color: null,
+                      selected: _backgroundColor == null,
+                      onTap: () => setState(() => _backgroundColor = null),
+                    ),
+                    for (final preset in kScenarioBackgroundPresets)
+                      _ColorSwatch(
+                        color: preset,
+                        selected: _backgroundColor == preset,
+                        onTap: () => setState(() => _backgroundColor = preset),
                       ),
+                    for (final saved in _savedColors)
+                      _ColorSwatch(
+                        color: saved,
+                        selected: _backgroundColor == saved,
+                        onTap: () => setState(() => _backgroundColor = saved),
+                        onLongPress: () => _deleteSavedColor(saved),
+                      ),
+                    _ColorSwatch(
+                      label: l10n.scenarioBackgroundCustom,
+                      color: _backgroundColor == null ||
+                              kScenarioBackgroundPresets
+                                  .contains(_backgroundColor)
+                          ? const Color(0xFFB0BEC5)
+                          : _backgroundColor,
+                      selected: _backgroundColor != null &&
+                          !kScenarioBackgroundPresets
+                              .contains(_backgroundColor),
+                      onTap: _pickCustomColor,
                     ),
                   ],
                 ),
-              ),
-            ),
-            const SizedBox(height: 20),
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                  labelText: l10n.scenarioNameLabel,
-                  prefixIcon: const Icon(Icons.label_outline)),
-            ),
-            const SizedBox(height: 20),
-            SectionHeader(l10n.scenarioTypeSection),
-            SegmentedButton<ScenarioType>(
-              segments: [
-                ButtonSegment(
-                    value: ScenarioType.tapToRun,
-                    label: Text(l10n.scenarioTypeTapToRun),
-                    icon: const Icon(Icons.touch_app_outlined)),
-                ButtonSegment(
-                    value: ScenarioType.manualSlider,
-                    label: Text(l10n.scenarioTypeManualSlider),
-                    icon: const Icon(Icons.tune)),
-              ],
-              selected: {_type},
-              onSelectionChanged: (s) => setState(() => _type = s.first),
-            ),
-            const SizedBox(height: 20),
-            DropdownButtonFormField<String>(
-              initialValue: roomOptions.contains(_roomName)
-                  ? _roomName
-                  : roomOptions.first,
-              decoration: InputDecoration(
-                  labelText: l10n.scenarioRoomLabel,
-                  prefixIcon: const Icon(Icons.meeting_room_outlined)),
-              items: [
-                for (final room in roomOptions)
-                  DropdownMenuItem(value: room, child: Text(room))
-              ],
-              onChanged: (value) =>
-                  setState(() => _roomName = value ?? _roomName),
-            ),
-            const SizedBox(height: 20),
-            SectionHeader(l10n.scenarioBackgroundSection),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                _ColorSwatch(
-                  label: l10n.scenarioBackgroundDefault,
-                  color: null,
-                  selected: _backgroundColor == null,
-                  onTap: () => setState(() => _backgroundColor = null),
-                ),
-                for (final preset in kScenarioBackgroundPresets)
-                  _ColorSwatch(
-                    color: preset,
-                    selected: _backgroundColor == preset,
-                    onTap: () => setState(() => _backgroundColor = preset),
+                if (_savedColors.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    l10n.scenarioBackgroundSavedHint,
+                    style: TextStyle(
+                        fontSize: 12, color: onSurface.withValues(alpha: 0.5)),
                   ),
-                for (final saved in _savedColors)
-                  _ColorSwatch(
-                    color: saved,
-                    selected: _backgroundColor == saved,
-                    onTap: () => setState(() => _backgroundColor = saved),
-                    onLongPress: () => _deleteSavedColor(saved),
-                  ),
-                _ColorSwatch(
-                  label: l10n.scenarioBackgroundCustom,
-                  color: _backgroundColor == null ||
-                          kScenarioBackgroundPresets.contains(_backgroundColor)
-                      ? const Color(0xFFB0BEC5)
-                      : _backgroundColor,
-                  selected: _backgroundColor != null &&
-                      !kScenarioBackgroundPresets.contains(_backgroundColor),
-                  onTap: _pickCustomColor,
+                ],
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(l10n.showOnHome),
+                  subtitle: Text(l10n.scenarioPinHint),
+                  value: _showInHome,
+                  onChanged: (v) => setState(() => _showInHome = v),
                 ),
-              ],
-            ),
-            if (_savedColors.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              Text(
-                l10n.scenarioBackgroundSavedHint,
-                style: TextStyle(
-                    fontSize: 12, color: onSurface.withValues(alpha: 0.5)),
-              ),
-            ],
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(l10n.showOnHome),
-              subtitle: Text(l10n.scenarioPinHint),
-              value: _showInHome,
-              onChanged: (v) => setState(() => _showInHome = v),
-            ),
-            const SizedBox(height: 12),
-            if (_type == ScenarioType.tapToRun) ...[
-              SectionHeader(
-                l10n.scenarioActionsSection,
-                trailing: TextButton.icon(
-                    onPressed: _addAction,
-                    icon: const Icon(Icons.add),
-                    label: Text(l10n.add)),
-              ),
-              if (_actions.isEmpty)
-                EmptyState(
-                    icon: Icons.flash_on_outlined,
-                    message: l10n.scenarioActionsEmpty)
-              else
-                for (int i = 0; i < _actions.length; i++)
-                  Padding(
-                    padding:
-                        const EdgeInsets.only(bottom: AppSpacing.betweenCards),
-                    child: Card(
-                      child: ListTile(
-                        leading: IconAvatar(icon: _actions[i].icon),
-                        title: Text(
-                            _actions[i].isInputAction
-                                ? _actions[i].inputName
-                                : _actions[i].channelName,
-                            style:
-                                const TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: Text(l10n.scenarioActionModuleSummary(
-                            _actions[i].moduleName, _actions[i].summary)),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: l10n.scenarioEditActionTooltip,
-                              icon: const Icon(Icons.edit_outlined),
-                              onPressed: () => _editAction(i),
+                const SizedBox(height: 12),
+                if (_type == ScenarioType.tapToRun) ...[
+                  SectionHeader(
+                    l10n.scenarioActionsSection,
+                    trailing: TextButton.icon(
+                        onPressed: _addAction,
+                        icon: const Icon(Icons.add),
+                        label: Text(l10n.add)),
+                  ),
+                  if (_actions.isEmpty)
+                    EmptyState(
+                        icon: Icons.flash_on_outlined,
+                        message: l10n.scenarioActionsEmpty)
+                  else
+                    for (int i = 0; i < _actions.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                            bottom: AppSpacing.betweenCards),
+                        child: Card(
+                          child: ListTile(
+                            leading: IconAvatar(icon: _actions[i].icon),
+                            title: Text(
+                                _actions[i].isInputAction
+                                    ? _actions[i].inputName
+                                    : _actions[i].channelName,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w700)),
+                            subtitle: Text(l10n.scenarioActionModuleSummary(
+                                _actions[i].moduleName, _actions[i].summary)),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  tooltip: l10n.scenarioEditActionTooltip,
+                                  icon: const Icon(Icons.edit_outlined),
+                                  onPressed: () => _editAction(i),
+                                ),
+                                IconButton(
+                                  tooltip: l10n.scenarioDeleteActionTooltip,
+                                  icon: const Icon(Icons.delete_outline),
+                                  onPressed: () =>
+                                      setState(() => _actions.removeAt(i)),
+                                ),
+                              ],
                             ),
-                            IconButton(
-                              tooltip: l10n.scenarioDeleteActionTooltip,
-                              icon: const Icon(Icons.delete_outline),
-                              onPressed: () =>
-                                  setState(() => _actions.removeAt(i)),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
+                ] else ...[
+                  SectionHeader(l10n.scenarioSliderTargetSection),
+                  DropdownButtonFormField<String>(
+                    initialValue: dimmerTargets.contains(_sliderTargetName)
+                        ? _sliderTargetName
+                        : null,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                        labelText: l10n.scenarioDimmerOutputLabel,
+                        prefixIcon: const Icon(Icons.lightbulb_outline)),
+                    items: [
+                      for (final t in dimmerTargets)
+                        DropdownMenuItem(
+                            value: t,
+                            child: Text(t,
+                                maxLines: 1, overflow: TextOverflow.ellipsis))
+                    ],
+                    selectedItemBuilder: (context) => [
+                      for (final t in dimmerTargets)
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(t,
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        )
+                    ],
+                    onChanged: (value) => setState(
+                        () => _sliderTargetName = value ?? _sliderTargetName),
                   ),
-            ] else ...[
-              SectionHeader(l10n.scenarioSliderTargetSection),
-              DropdownButtonFormField<String>(
-                initialValue: dimmerTargets.contains(_sliderTargetName)
-                    ? _sliderTargetName
-                    : null,
-                isExpanded: true,
-                decoration: InputDecoration(
-                    labelText: l10n.scenarioDimmerOutputLabel,
-                    prefixIcon: const Icon(Icons.lightbulb_outline)),
-                items: [
-                  for (final t in dimmerTargets)
-                    DropdownMenuItem(
-                        value: t,
-                        child: Text(t,
-                            maxLines: 1, overflow: TextOverflow.ellipsis))
+                  const SizedBox(height: 16),
+                  Text(l10n.scenarioDefaultBrightness(sliderValue),
+                      style: const TextStyle(fontWeight: FontWeight.w600)),
+                  Slider(
+                    value: sliderValue.toDouble(),
+                    min: 0,
+                    max: 100,
+                    divisions: sliderTarget?.brightnessSliderDivisions ?? 100,
+                    label: '$sliderValue%',
+                    onChanged: sliderTarget == null
+                        ? null
+                        : (v) => _onSliderChanged(
+                            sliderTarget.snapBrightness(v.round())),
+                    onChangeEnd: _onSliderEnd,
+                  ),
                 ],
-                selectedItemBuilder: (context) => [
-                  for (final t in dimmerTargets)
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child:
-                          Text(t, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    )
-                ],
-                onChanged: (value) => setState(
-                    () => _sliderTargetName = value ?? _sliderTargetName),
-              ),
-              const SizedBox(height: 16),
-              Text(l10n.scenarioDefaultBrightness(_sliderValue),
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
-              Slider(
-                value: _sliderValue.toDouble(),
-                min: 0,
-                max: 100,
-                divisions: sliderTarget?.brightnessSliderDivisions ?? 100,
-                label: '$_sliderValue%',
-                onChanged: sliderTarget == null
-                    ? null
-                    : (v) => setState(() =>
-                        _sliderValue = sliderTarget.snapBrightness(v.round())),
-              ),
-            ],
-            const SizedBox(height: 24),
-            FilledButton(onPressed: _save, child: Text(l10n.scenarioSave)),
-          ],
-        ),
-      ),
+                const SizedBox(height: 24),
+                FilledButton(onPressed: _save, child: Text(l10n.scenarioSave)),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
