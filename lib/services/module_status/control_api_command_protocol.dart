@@ -29,7 +29,6 @@ import 'package:flutter/foundation.dart';
 import '../../core/soleux/soleux_json_protocol.dart';
 import 'module_command_protocol.dart';
 import 'soleux_control_api_service.dart';
-import 'soleux_json_service.dart';
 
 class ControlApiCommandProtocol implements ModuleCommandProtocol {
   final SoleuxControlApiService _service;
@@ -45,13 +44,6 @@ class ControlApiCommandProtocol implements ModuleCommandProtocol {
   @override
   bool get isConnected => _service.isConnected;
 
-  /// Error codes meaning "action not implemented yet", the trigger for the
-  /// legacy-AT fallback on pre-Control-API `J:` devices.
-  static const Set<String> _fallbackCodes = {
-    'unsupported_command',
-    'unknown_action',
-  };
-
   @override
   Future<bool> ping() async {
     try {
@@ -66,8 +58,7 @@ class ControlApiCommandProtocol implements ModuleCommandProtocol {
   Future<bool> setOutputState(int channel, bool on) async {
     try {
       final response = await _service.setOutputState(channel, on);
-      return await _maybeFallback(
-          response, on ? 'AT+ON:$channel\r' : 'AT+OFF:$channel\r');
+      return _applyResult(response);
     } catch (e, st) {
       debugPrint('ControlApiCommandProtocol: set_output_state($channel, $on) '
           'failed: $e\n$st');
@@ -79,7 +70,7 @@ class ControlApiCommandProtocol implements ModuleCommandProtocol {
   Future<bool> toggleOutput(int channel) async {
     try {
       final response = await _service.toggleOutput(channel);
-      return await _maybeFallback(response, 'AT+TOGGLE:$channel\r');
+      return _applyResult(response);
     } catch (e, st) {
       debugPrint('ControlApiCommandProtocol: toggle_output($channel) failed: '
           '$e\n$st');
@@ -91,7 +82,7 @@ class ControlApiCommandProtocol implements ModuleCommandProtocol {
   Future<bool> restartOutput(int channel) async {
     try {
       final response = await _service.restartOutput(channel);
-      return await _maybeFallback(response, 'AT+RESTART:$channel\r');
+      return _applyResult(response);
     } catch (e, st) {
       debugPrint('ControlApiCommandProtocol: restart_output($channel) failed: '
           '$e\n$st');
@@ -104,8 +95,7 @@ class ControlApiCommandProtocol implements ModuleCommandProtocol {
     try {
       final response =
           await _service.setDimmerLevel(channel, brightnessPct.clamp(0, 100));
-      return await _maybeFallback(
-          response, 'AT+BRIGH:$channel:$brightnessPct\r');
+      return _applyResult(response);
     } catch (e, st) {
       debugPrint('ControlApiCommandProtocol: set_dimmer_level($channel, '
           '$brightnessPct) failed: $e\n$st');
@@ -113,35 +103,12 @@ class ControlApiCommandProtocol implements ModuleCommandProtocol {
     }
   }
 
-  /// Applies a Control API response: true when accepted, otherwise falls back
-  /// to the legacy AT [command] when the action is not implemented.
-  Future<bool> _maybeFallback(
-      SoleuxJsonResponse response, String command) async {
-    if (response.ok) return true;
-    final code = response.error?.code;
-    if (code != null && _fallbackCodes.contains(code)) {
-      return _sendLegacyAt(command);
-    }
-    return false;
-  }
-
-  /// Sends a legacy AT line, but only when the session is on the legacy TCP
-  /// port (`legacyJ` framing). The Control API port and the HTTP/HTTPS
-  /// endpoint accept JSON only, so the fallback is a no-op there (spec
-  /// compatibility rule).
-  Future<bool> _sendLegacyAt(String command) async {
-    final service = _service;
-    if (service is! SoleuxJsonService) return false;
-    if (service.framing != SoleuxJsonFraming.legacyJ) {
-      return false;
-    }
-    try {
-      final raw = await service.legacy(command);
-      return raw.trimRight().endsWith('OK');
-    } catch (e, st) {
-      debugPrint('ControlApiCommandProtocol: AT fallback "$command" failed: '
-          '$e\n$st');
-      return false;
-    }
-  }
+  /// Applies a Control API response: true only when the device accepted it.
+  ///
+  /// NOTE: the legacy AT fallback (re-sending `AT+ON`/`AT+OFF`/`AT+TOGGLE`/
+  /// `AT+RESTART`/`AT+BRIGH` on the legacy 5005 `J:` port when the Control API
+  /// answers `unsupported_command`/`unknown_action`) is intentionally left out
+  /// here. All current modules speak the Control API over the 5008 JSON port
+  /// and must not be driven through the retired AT-command path.
+  bool _applyResult(SoleuxJsonResponse response) => response.ok;
 }
