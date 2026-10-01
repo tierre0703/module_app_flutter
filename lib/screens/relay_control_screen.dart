@@ -26,6 +26,14 @@ class RelayControlScreen extends StatefulWidget {
 }
 
 class _RelayControlScreenState extends State<RelayControlScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Pull a fresh status dump (output/input states + names) when the screen
+    // opens, so device-side changes made outside the app show immediately.
+    _refresh();
+  }
+
   Future<void> _editChannel(ChannelOutput channel, int index) async {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
