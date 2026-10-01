@@ -26,6 +26,10 @@ class _FakeDevice {
   final ServerSocket server;
   final List<String> received = [];
   final Map<int, bool> outputs = {};
+
+  /// Device-reported input names. Tests mutate this to simulate an input
+  /// renamed outside the app before the next refresh.
+  final Map<int, String> inputNames = {};
   final bool staleActual;
   final List<_FakeSocket> _sockets = [];
 
@@ -111,7 +115,7 @@ class _FakeDevice {
           for (var ch = 0; ch < 2; ch++)
             {
               'channel': ch,
-              'input_name': 'Input ${ch + 1}',
+              'input_name': inputNames[ch] ?? 'Input ${ch + 1}',
               'input_state': false,
               'input_enabled': 1,
             }
@@ -623,6 +627,72 @@ void main() {
     await _flush();
     expect(store.byId('m-temp')!.internalTempC, closeTo(27.4, 0.05),
         reason: 'temperature_changed must update the module temperature');
+
+    service.dispose();
+    await fake.server.close();
+  });
+
+  test('refreshOne adopts an input name changed outside the app', () async {
+    final fake = await _FakeDevice.start();
+    final store = ModuleStore.forTesting();
+    final module = DeviceModule(
+      id: 'm-inname',
+      name: 'Relays',
+      type: ModuleType.relay,
+      ipAddress: '127.0.0.1',
+      status: ConnectionStatus.offline,
+      roomName: 'Room',
+      internalTempC: 30,
+      tcpPort: fake.port - 3,
+    );
+    await store.replaceAll([module]);
+
+    final service = ModuleStatusService(store: store);
+    expect(await service.refreshOne(module), isTrue);
+    await _flush();
+    expect(store.byId('m-inname')!.inputs[0].name, 'Input 1');
+
+    // Another client renamed input 0 on the device; the next refresh must pull
+    // the new name into the app so the module screen reflects it.
+    fake.inputNames[0] = 'Front Door';
+    expect(await service.refreshOne(module), isTrue);
+    await _flush();
+    expect(store.byId('m-inname')!.inputs[0].name, 'Front Door',
+        reason: 'an input renamed outside the app must show up after refresh');
+
+    service.dispose();
+    await fake.server.close();
+  });
+
+  test('refreshOne prefers the device input name over a local edit', () async {
+    final fake = await _FakeDevice.start();
+    final store = ModuleStore.forTesting();
+    final module = DeviceModule(
+      id: 'm-inuser',
+      name: 'Relays',
+      type: ModuleType.relay,
+      ipAddress: '127.0.0.1',
+      status: ConnectionStatus.offline,
+      roomName: 'Room',
+      internalTempC: 30,
+      tcpPort: fake.port - 3,
+    );
+    await store.replaceAll([module]);
+
+    final service = ModuleStatusService(store: store);
+    expect(await service.refreshOne(module), isTrue);
+    await _flush();
+    expect(store.byId('m-inuser')!.inputs[0].name, 'Input 1');
+
+    // A local name edit not stored on the device must not survive the next
+    // refresh: the device is the source of truth for names.
+    await store.update('m-inuser', (m) {
+      m.inputs[0].name = 'Front Door';
+    });
+    expect(await service.refreshOne(module), isTrue);
+    await _flush();
+    expect(store.byId('m-inuser')!.inputs[0].name, 'Input 1',
+        reason: 'the device name is authoritative over a local name edit');
 
     service.dispose();
     await fake.server.close();

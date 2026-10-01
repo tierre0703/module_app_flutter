@@ -68,10 +68,10 @@ void main() {
     fetcher.applyConfiguration(module, config);
 
     expect(module.channels.length, 3);
-    // User-defined name on channel 0 is preserved, state is refreshed.
-    expect(module.channels[0].name, 'Out 1');
+    // The device is authoritative: channel 0 adopts the device-reported name.
+    expect(module.channels[0].name, 'Server');
     expect(module.channels[0].isOn, isTrue);
-    // Newly created channels adopt device-reported names.
+    // Newly created channels adopt device-reported names (or defaults).
     expect(module.channels[1].name, 'Output 2');
     expect(module.channels[2].name, 'Floodlight');
     expect(module.channels[2].isOn, isTrue);
@@ -160,7 +160,7 @@ void main() {
     expect(module.channels.length, 2);
   });
 
-  test('existing user names are never overwritten', () {
+  test('device-reported output names overwrite existing local names', () {
     final module = relayModule(2);
     const config = SoleuxRelayConfiguration(
       outputCount: 2,
@@ -169,7 +169,45 @@ void main() {
       ],
     );
     fetcher.applyConfiguration(module, config);
-    expect(module.channels[0].name, 'Out 1');
+    expect(module.channels[0].name, 'Device name');
+  });
+
+  test('device-reported output names are adopted on refresh', () {
+    final module = relayModule(2);
+    module.channels[0].name = 'Pump';
+    const config = SoleuxRelayConfiguration(
+      outputCount: 2,
+      outputs: [
+        SoleuxOutputState(channel: 0, name: 'Water Pump', state: false),
+      ],
+    );
+    fetcher.applyConfiguration(module, config);
+    expect(module.channels[0].name, 'Water Pump');
+  });
+
+  test('device-reported input names are adopted on refresh', () {
+    final module = DeviceModule(
+      id: 'i1',
+      name: 'Relay',
+      type: ModuleType.relay,
+      ipAddress: '192.168.1.10',
+      status: ConnectionStatus.online,
+      roomName: 'Cabin',
+      internalTempC: 0,
+      inputs: [
+        PhysicalInput(id: 'i1i1', name: 'Input 1'),
+        PhysicalInput(id: 'i1i2', name: 'My Switch'),
+      ],
+    );
+    const config = SoleuxRelayConfiguration(
+      inputs: [
+        SoleuxInputState(channel: 0, name: 'Front Door'),
+        SoleuxInputState(channel: 1, name: 'Engine Room'),
+      ],
+    );
+    fetcher.applyConfiguration(module, config);
+    expect(module.inputs[0].name, 'Front Door');
+    expect(module.inputs[1].name, 'Engine Room');
   });
 
   test('parses PDU V1.0 outer-protocol-free hello gracefully', () {

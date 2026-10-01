@@ -10,15 +10,14 @@
 //   - per-output state     (AT+OUTSTAT → OUT:<pin>:<ON|OFF>)
 //   - per-input state      (AT+INSTAT  → IN:<pin>:<ON|OFF>)
 //
-// Output count is authoritative and comes from the device, but user-defined
-// output names are persistent: existing channels keep their configured
-// name/icon, new channels are appended with the device-reported name
-// (AT+CHNAMES -> CHNAME_OUT) when available (or a generic default), and
-// channels beyond the reported count are dropped. Existing channel names are
-// never overwritten by the device, so a user-defined name stays persistent.
-// Subclasses only declare their module type and the commands that reveal that
-// topology - so dimmer / temperature / blind support is added by writing a
-// small subclass, nothing else.
+// Output count is authoritative and comes from the device, and names are too:
+// existing channels/inputs adopt the device-reported names (AT+CHNAMES ->
+// CHNAME_OUT/CHNAME_IN) on every pass, new channels are appended with the
+// device-reported name when available (or a generic default), and channels
+// beyond the reported count are dropped - so a rename made outside the app
+// shows up on the next refresh. Subclasses only declare their module type and
+// the commands that reveal that topology - so dimmer / temperature / blind
+// support is added by writing a small subclass, nothing else.
 import 'package:flutter/material.dart';
 
 import '../../models/models.dart';
@@ -65,10 +64,11 @@ abstract class BaseModuleStatusFetcher implements ModuleStatusFetcher {
   /// brightness). No-op by default.
   void applyExtra(DeviceModule module, List<PduResponse> responses) {}
 
-  /// Aligns [module.channels] to the device-reported output count, preserving
-  /// user-defined names/icons, applying fresh [outputs] states, and naming any
-  /// channels appended for the first time with the device-reported names
-  /// ([outputNames]) when available (falling back to a generic default).
+  /// Aligns [module.channels] to the device-reported output count, applying fresh
+  /// [outputs] states and the device-reported [outputNames] (the device is the
+  /// source of truth for names), and naming any channels appended for the first
+  /// time with the device-reported names when available (falling back to a
+  /// generic default).
   void reconcileOutputs(
     DeviceModule module,
     int? relayCount,
@@ -100,11 +100,22 @@ abstract class BaseModuleStatusFetcher implements ModuleStatusFetcher {
         module.channels[entry.key].isOn = entry.value;
       }
     }
+
+    for (final entry in outputNames.entries) {
+      if (entry.key >= 0 && entry.key < module.channels.length) {
+        // The device is the source of truth for the name; a rename made outside
+        // the app shows up on the next refresh.
+        if (entry.value.isNotEmpty) {
+          module.channels[entry.key].name = entry.value;
+        }
+      }
+    }
   }
 
   /// Aligns [module.inputs] to the number of inputs the device reports,
-  /// appending defaults for new ones (preferring the device-reported names
-  /// in [inputNames] when available). Input identities are stable by index.
+  /// appending defaults for new ones (preferring the device-reported names in
+  /// [inputNames] when available) and adopting the device-reported names for
+  /// existing inputs. Input identities are stable by index.
   void reconcileInputs(
     DeviceModule module,
     Map<int, bool> inputs, [
@@ -127,6 +138,16 @@ abstract class BaseModuleStatusFetcher implements ModuleStatusFetcher {
     }
     if (module.inputs.length > targetCount) {
       module.inputs.removeRange(targetCount, module.inputs.length);
+    }
+
+    for (final entry in inputNames.entries) {
+      if (entry.key >= 0 && entry.key < module.inputs.length) {
+        // The device is the source of truth for the name; a rename made outside
+        // the app shows up on the next refresh.
+        if (entry.value.isNotEmpty) {
+          module.inputs[entry.key].name = entry.value;
+        }
+      }
     }
   }
 }

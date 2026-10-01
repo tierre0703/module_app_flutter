@@ -8,10 +8,11 @@
 //   2. `get_relay_configuration`
 //   3. build the UI from returned counts, fields, and device identity
 //
-// Reconciliation applies the same "user names are persistent" rule as the AT+
-// path: existing channel/input names are never overwritten by the device; new
-// entries take the device-reported names. Dimmer outputs pick up PWM/brightness
-// from the configuration when present.
+// Reconciliation treats the device as the source of truth for names: whatever
+// the module currently reports for an input/output is adopted on every refresh
+// (a rename made outside the app shows up immediately). Only an input/output
+// the device reports no name for keeps its local name. Dimmer outputs pick up
+// PWM/brightness from the configuration when present.
 import 'package:flutter/material.dart';
 
 import '../../core/soleux/soleux_device_family.dart';
@@ -225,9 +226,9 @@ class SoleuxJsonFetcher {
       if (output.pwm != null) {
         channel.brightness = output.pwm!.clamp(0, 100);
       }
-      // Only seed the name for freshly created channels; never overwrite a
-      // user-customised name.
-      if (channel.name == 'Output ${index + 1}' && output.name.isNotEmpty) {
+      // The device is the source of truth for the name; a rename made outside
+      // the app shows up on the next refresh.
+      if (output.name.isNotEmpty) {
         channel.name = output.name;
       }
     }
@@ -254,6 +255,17 @@ class SoleuxJsonFetcher {
     }
     if (module.inputs.length > targetInputs) {
       module.inputs.removeRange(targetInputs, module.inputs.length);
+    }
+
+    for (final input in config.inputs) {
+      final index = input.channel;
+      if (index < 0 || index >= module.inputs.length) continue;
+      final liveInput = module.inputs[index];
+      // The device is the source of truth for the name; a rename made outside
+      // the app shows up on the next refresh.
+      if (input.name.isNotEmpty) {
+        liveInput.name = input.name;
+      }
     }
   }
 }
