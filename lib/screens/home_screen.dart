@@ -723,8 +723,8 @@ class _QuickScenarioCardState extends State<_QuickScenarioCard> {
     final v = _dragValue;
     setState(() => _dragValue = null);
     if (v == null) return;
-    final ref = dimmerTargetRef(
-        ModuleStore.shared.modules, scenario.sliderTargetName);
+    final ref =
+        dimmerTargetRef(ModuleStore.shared.modules, scenario.sliderTargetName);
     if (ref != null) {
       ModuleStatusService.shared.setDimmerLevel(ref.$1.id, ref.$2, v);
     }

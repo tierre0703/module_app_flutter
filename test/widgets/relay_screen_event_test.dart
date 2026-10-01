@@ -138,8 +138,8 @@ class _FakeSocket {
 /// continuation, so a few alternating cycles settle the whole chain.
 Future<void> _settle(WidgetTester tester) async {
   for (var i = 0; i < 4; i++) {
-    await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester
+        .runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
     await tester.pump();
   }
   await tester.pump(const Duration(seconds: 1));

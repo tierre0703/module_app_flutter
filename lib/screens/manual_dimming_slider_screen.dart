@@ -101,8 +101,7 @@ class _ManualDimmingSliderScreenState extends State<ManualDimmingSliderScreen> {
                           divisions: target?.brightnessSliderDivisions ?? 100,
                           label: '$visible%',
                           onChanged: (v) => _update(v.round()),
-                          onChangeEnd: (_) =>
-                              setState(() => _dragValue = null),
+                          onChangeEnd: (_) => setState(() => _dragValue = null),
                         ),
                       ),
                       const Icon(Icons.brightness_high),

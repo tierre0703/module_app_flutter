@@ -1,4 +1,4 @@
-﻿// Tests for the PROTOCOLS.md Â§1 TCP status layer:
+// Tests for the PROTOCOLS.md Â§1 TCP status layer:
 //   - parsing an `AT+TEMP` / `AT+OUTSTAT` response body into a PduResponse
 //   - the standard relay fetcher applying those fields onto a DeviceModule
 //   - the registry being expandable to future module types
@@ -201,8 +201,8 @@ void main() {
         ],
       );
 
-      fetcher.apply(
-          module, [PduResponse.parse('RELAY_COUNT:1\r\nCHNAME_OUT:0:Water Pump')]);
+      fetcher.apply(module,
+          [PduResponse.parse('RELAY_COUNT:1\r\nCHNAME_OUT:0:Water Pump')]);
 
       expect(module.channels.single.name, 'Water Pump');
     });
