@@ -106,7 +106,7 @@ void main() {
       expect(module.firmware, '2.1 Build :9');
     });
 
-    test('extends outputs to the device count while preserving user names', () {
+    test('extends outputs to the device count', () {
       const fetcher = RelayModuleStatusFetcher();
       final module = DeviceModule(
         id: 'm1',
@@ -121,14 +121,15 @@ void main() {
         ],
       );
 
-      // Device reports 4 outputs; app had 1 user-named output.
+      // Device reports 4 outputs; the device reported no CHNAME for any
+      // channel, so the existing name is kept.
       fetcher.apply(module, [
         PduResponse.parse('RELAY_COUNT:4'),
         PduResponse.parse('OUT:0:ON\r\nOUT:3:ON'),
       ]);
 
       expect(module.channels.length, 4);
-      expect(module.channels[0].name, 'Cabin Light'); // user name preserved
+      expect(module.channels[0].name, 'Cabin Light');
       expect(module.channels[0].isOn, isTrue);
       expect(module.channels[1].name, 'Output 2'); // default name added
       expect(module.channels[3].isOn, isTrue);
@@ -156,7 +157,7 @@ void main() {
       ]);
 
       expect(module.channels.length, 4);
-      // The user-defined name on channel 0 is never clobbered by the device.
+      // The device reported no name for channel 0, so its name is kept.
       expect(module.channels[0].name, 'Cabin Light');
       // Newly appended channels fall back to the device name when available.
       expect(module.channels[1].name, 'Kitchen Light');
@@ -164,7 +165,7 @@ void main() {
       expect(module.channels[3].name, 'Deck Floodlight');
     });
 
-    test('existing output names are never overwritten by the device', () {
+    test('device-reported output names overwrite existing names', () {
       const fetcher = RelayModuleStatusFetcher();
       final module = DeviceModule(
         id: 'm1',
@@ -182,7 +183,49 @@ void main() {
       fetcher.apply(
           module, [PduResponse.parse('RELAY_COUNT:1\r\nCHNAME_OUT:0:Pump')]);
 
-      expect(module.channels.single.name, 'Cabin Light');
+      expect(module.channels.single.name, 'Pump');
+    });
+
+    test('device-reported output names adopt the device rename', () {
+      const fetcher = RelayModuleStatusFetcher();
+      final module = DeviceModule(
+        id: 'm1',
+        name: 'Relay',
+        type: ModuleType.relay,
+        ipAddress: '192.168.1.10',
+        status: ConnectionStatus.online,
+        roomName: 'Cabin',
+        internalTempC: 0,
+        channels: [
+          ChannelOutput(id: 'm1c1', name: 'Pump', icon: Icons.power),
+        ],
+      );
+
+      fetcher.apply(
+          module, [PduResponse.parse('RELAY_COUNT:1\r\nCHNAME_OUT:0:Water Pump')]);
+
+      expect(module.channels.single.name, 'Water Pump');
+    });
+
+    test('device-reported input names adopt the device rename', () {
+      const fetcher = RelayModuleStatusFetcher();
+      final module = DeviceModule(
+        id: 'm1',
+        name: 'Relay',
+        type: ModuleType.relay,
+        ipAddress: '192.168.1.10',
+        status: ConnectionStatus.online,
+        roomName: 'Cabin',
+        internalTempC: 0,
+        inputs: [
+          PhysicalInput(id: 'm1i1', name: 'Front Door'),
+        ],
+      );
+
+      fetcher.apply(
+          module, [PduResponse.parse('IN:0:ON\r\nCHNAME_IN:0:Main Entrance')]);
+
+      expect(module.inputs.single.name, 'Main Entrance');
     });
 
     test('trims outputs beyond the reported count', () {
