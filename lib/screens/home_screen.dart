@@ -675,6 +675,11 @@ class _QuickScenarioCardState extends State<_QuickScenarioCard> {
   /// the module's live PWM so the card stays synced with the device.
   int? _dragValue;
 
+  /// Coalesces rapid drag updates so a dimmer command (and the module's PWM
+  /// feedback loop that rebuilds every store listener) is not fired on every
+  /// slider tick while the user drags.
+  Timer? _dimmerDebounce;
+
   Scenario get scenario => widget.scenario;
 
   ChannelOutput? get sliderChannel => dimmerTargetChannel(
@@ -690,20 +695,47 @@ class _QuickScenarioCardState extends State<_QuickScenarioCard> {
     return scenario.sliderValue.clamp(0, 100);
   }
 
-  Future<void> _onSliderChanged(int value) async {
+  void _onSliderChanged(int value) {
     final snapped = sliderChannel?.snapBrightness(value) ?? value;
     final v = snapped.clamp(0, 100);
     setState(() => _dragValue = v);
-    widget.onSliderChanged(v);
-    final ref = dimmerTargetRef(
-        ModuleStore.shared.modules, scenario.sliderTargetName);
-    if (ref != null) {
-      await ModuleStatusService.shared.setDimmerLevel(ref.$1.id, ref.$2, v);
-    }
+    _scheduleDimmerCommand(v);
+  }
+
+  /// Sends the requested dimmer level after the drag pauses, so a fast drag
+  /// pushes one coalesced command instead of one per pixel of movement. The
+  /// command is flushed immediately on drag end by [_onSliderEnd].
+  void _scheduleDimmerCommand(int v) {
+    _dimmerDebounce?.cancel();
+    _dimmerDebounce = Timer(const Duration(milliseconds: 80), () {
+      _dimmerDebounce = null;
+      final ref = dimmerTargetRef(
+          ModuleStore.shared.modules, scenario.sliderTargetName);
+      if (ref != null) {
+        ModuleStatusService.shared.setDimmerLevel(ref.$1.id, ref.$2, v);
+      }
+    });
   }
 
   void _onSliderEnd(double value) {
+    _dimmerDebounce?.cancel();
+    _dimmerDebounce = null;
+    final v = _dragValue;
     setState(() => _dragValue = null);
+    if (v == null) return;
+    final ref = dimmerTargetRef(
+        ModuleStore.shared.modules, scenario.sliderTargetName);
+    if (ref != null) {
+      ModuleStatusService.shared.setDimmerLevel(ref.$1.id, ref.$2, v);
+    }
+    // Persist the final value only once, on release - not on every slider tick.
+    widget.onSliderChanged(v);
+  }
+
+  @override
+  void dispose() {
+    _dimmerDebounce?.cancel();
+    super.dispose();
   }
 
   @override

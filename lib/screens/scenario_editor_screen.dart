@@ -408,6 +408,15 @@ class _ScenarioEditorScreenState extends State<ScenarioEditorScreen> {
                 ] else ...[
                   SectionHeader(l10n.scenarioSliderTargetSection),
                   DropdownButtonFormField<String>(
+                    // DropdownButtonFormField only reads initialValue when it is
+                    // first created, so once the module list loads asynchronously
+                    // the previously stored target would keep showing blank.
+                    // Recreating the field when the selectable state changes makes
+                    // the async-loaded list (and a missing target) show correctly.
+                    key: ValueKey(
+                        dimmerTargets.contains(_sliderTargetName)
+                            ? _sliderTargetName
+                            : ''),
                     initialValue: dimmerTargets.contains(_sliderTargetName)
                         ? _sliderTargetName
                         : null,
