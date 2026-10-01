@@ -132,6 +132,19 @@ class _FakeSocket {
   _FakeSocket(this.socket);
 }
 
+/// Drains the on-open refresh the module screen fires from `initState`
+/// (hello -> relay configuration -> device state). Each request needs real I/O
+/// to receive its response (runAsync) and a pump to run the FakeAsync
+/// continuation, so a few alternating cycles settle the whole chain.
+Future<void> _settle(WidgetTester tester) async {
+  for (var i = 0; i < 4; i++) {
+    await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump();
+  }
+  await tester.pump(const Duration(seconds: 1));
+}
+
 void main() {
   testWidgets(
       'protocol-2 broadcasts render on the relay screen without polling',
@@ -151,7 +164,9 @@ void main() {
 
     final store = ModuleStore.shared;
     await tester.runAsync(() => store.replaceAll([module]));
-    final service = ModuleStatusService(store: store);
+    // Use the shared service (the one the screen refreshes on open) so its
+    // socket is already live before the widget is pumped.
+    final service = ModuleStatusService.shared;
     final refreshed = await tester.runAsync(() => service.refreshOne(module));
     expect(refreshed, isTrue,
         reason: 'Control API hello + configuration fetch must succeed');
@@ -165,6 +180,7 @@ void main() {
       home: RelayControlScreen(module: module),
     ));
     await tester.pump();
+    await _settle(tester);
 
     // Both outputs start OFF, both inputs OFF.
     expect(find.byWidgetPredicate((w) => w is FilledButton && w.enabled),
@@ -194,7 +210,9 @@ void main() {
     expect(find.text('ON'), findsNWidgets(2),
         reason: 'output ON button label + lit input indicator badge');
 
-    service.dispose();
+    // Tear the shared service's keep-alive/socket timers down so none stay
+    // pending after the test.
+    ModuleStatusService.shared.dispose();
     await tester.runAsync(fake.server.close);
   });
 
@@ -217,7 +235,9 @@ void main() {
 
     final store = ModuleStore.shared;
     await tester.runAsync(() => store.replaceAll([module]));
-    final service = ModuleStatusService(store: store);
+    // Use the shared service (the one the screen refreshes on open) so its
+    // socket is already live before the widget is pumped.
+    final service = ModuleStatusService.shared;
     expect(await tester.runAsync(() => service.refreshOne(module)), isTrue);
     await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 300)));
@@ -228,6 +248,7 @@ void main() {
       home: DimmerAcScreen(module: module),
     ));
     await tester.pump();
+    await _settle(tester);
 
     List<IconAvatar> avatars() =>
         tester.widgetList<IconAvatar>(find.byType(IconAvatar)).toList();
@@ -248,7 +269,9 @@ void main() {
     expect(avatars().length, greaterThan(1),
         reason: 'sanity: more than one channel avatar exists');
 
-    service.dispose();
+    // Tear the shared service's keep-alive/socket timers down so none stay
+    // pending after the test.
+    ModuleStatusService.shared.dispose();
     await tester.runAsync(fake.server.close);
   });
 }

@@ -28,6 +28,14 @@ class BlindControlScreen extends StatefulWidget {
 class _BlindControlScreenState extends State<BlindControlScreen> {
   final Map<String, _Motion> _motion = {};
 
+  @override
+  void initState() {
+    super.initState();
+    // Pull a fresh status dump (output/input states + names) when the screen
+    // opens, so device-side changes made outside the app show immediately.
+    _refresh();
+  }
+
   _Motion _motionOf(ChannelOutput channel) =>
       _motion[channel.id] ?? _Motion.idle;
 
