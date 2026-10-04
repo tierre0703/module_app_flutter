@@ -282,6 +282,7 @@ Future<bool> showEditModuleInfoDialog(
   if (result?.saved == true) {
     if (result!.name.isNotEmpty) module.name = result.name;
     if (result.ip.isNotEmpty) module.ipAddress = result.ip;
+    if (result.type != null) module.type = result.type!;
     if (result.connectionType != null) {
       module.connectionType = result.connectionType;
     }
@@ -302,6 +303,7 @@ class ModuleInfoResult {
     required this.saved,
     required this.name,
     required this.ip,
+    this.type,
     this.connectionType,
     this.port,
     this.tempThreshold,
@@ -310,6 +312,7 @@ class ModuleInfoResult {
   final bool saved;
   final String name;
   final String ip;
+  final ModuleType? type;
   final String? connectionType;
   final int? port;
   final double? tempThreshold;
@@ -329,6 +332,7 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
   late final TextEditingController _ipController;
   late final TextEditingController _portController;
   late final TextEditingController _tempController;
+  late ModuleType _type;
   late String? _connectionType;
 
   @override
@@ -337,6 +341,7 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
     final m = widget.module;
     _nameController = TextEditingController(text: m.name);
     _ipController = TextEditingController(text: m.ipAddress);
+    _type = m.type;
     // The retired pre-migration default 5005 is presented as the current
     // 5008 command HostPort.
     final port = m.tcpPort == 5005 ? '5008' : m.tcpPort.toString();
@@ -367,6 +372,7 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
               saved: true,
               name: _nameController.text.trim(),
               ip: _ipController.text.trim(),
+              type: _type,
               connectionType: _connectionType,
               port: int.tryParse(_portController.text.trim()),
               tempThreshold: double.tryParse(_tempController.text.trim()),
@@ -390,6 +396,27 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
               decoration: InputDecoration(
                   labelText: AppLocalizations.of(context).moduleName,
                   prefixIcon: const Icon(Icons.edit_outlined)),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<ModuleType>(
+              initialValue: _type,
+              isExpanded: true,
+              decoration: InputDecoration(
+                  labelText: AppLocalizations.of(context).addModuleType,
+                  prefixIcon: const Icon(Icons.category_outlined)),
+              items: [
+                for (final type in ModuleType.values)
+                  DropdownMenuItem(
+                    value: type,
+                    child: Text(
+                      type.label,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                    ),
+                  ),
+              ],
+              onChanged: (value) =>
+                  setState(() => _type = value ?? _type),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
