@@ -272,4 +272,51 @@ void main() {
     service.stop();
     server.close();
   });
+
+  test(
+      'a manually-added module that never answers goes offline, not online',
+      () async {
+    // A module freshly added by IP that is unreachable (no pong server on the
+    // heartbeat port): its first few pings miss, so it must degrade to suspect
+    // and then offline instead of staying at its seeded online status.
+    final store = ModuleStore.forTesting();
+    await store.init();
+
+    await store.upsert(DeviceModule(
+      id: 'manual-1',
+      name: 'Relay',
+      type: ModuleType.relay,
+      ipAddress: '127.0.0.1',
+      tcpPort: 5008,
+      heartbeatPort: 1, // no server -> never seen, always unreachable
+      status: ConnectionStatus.online, // seeded like a freshly added module
+      roomName: 'Cabin',
+      internalTempC: 25,
+    ));
+
+    final states = <HeartbeatAvailability>[];
+    final service = ModuleHeartbeatService.forTesting(
+      store: store,
+      monitor: SoleuxHeartbeatMonitor(
+        interval: const Duration(milliseconds: 150),
+        acceptWindow: const Duration(milliseconds: 60),
+        maxMissedCycles: 3,
+      ),
+    );
+    service.onAvailability = (_, state) => states.add(state);
+
+    await service.start();
+    // 3 consecutive misses land around 3 * (acceptWindow + interval) ~ 630 ms.
+    await Future<void>.delayed(const Duration(milliseconds: 1400));
+
+    final module = store.byId('manual-1')!;
+    expect(module.status, ConnectionStatus.offline,
+        reason: 'an unreachable never-seen module must not stay online');
+    expect(states, contains(HeartbeatAvailability.offline));
+    expect(states, contains(HeartbeatAvailability.suspect));
+    expect(states.indexOf(HeartbeatAvailability.suspect),
+        lessThan(states.indexOf(HeartbeatAvailability.offline)));
+
+    service.stop();
+  });
 }

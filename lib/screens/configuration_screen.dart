@@ -54,8 +54,10 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
     );
     if (added != null) {
       await _store.upsert(added);
-      // New modules are seeded online; probe it now so its real status is
-      // reflected in the list and on the Home screen immediately.
+      // Probe the new module now so its real status is reflected in the list
+      // and on the Home screen immediately (manual additions start offline
+      // until the probe/heartbeat confirms them; discovered ones are seeded
+      // online because they just answered a discovery broadcast).
       await ModuleStatusService.shared.refreshOne(added);
     }
   }

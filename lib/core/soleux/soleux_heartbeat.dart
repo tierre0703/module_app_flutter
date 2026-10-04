@@ -420,17 +420,23 @@ class SoleuxHeartbeatMonitor {
   }
 
   /// Availability derived from the consecutive-miss counter:
-  /// unknown before any pong; online with no misses; suspect with at least one
-  /// miss but fewer than [maxMissedCycles]; offline at [maxMissedCycles].
+  /// unknown before any pong with no misses; online with no misses after at
+  /// least one pong; suspect with at least one miss but fewer than
+  /// [maxMissedCycles]; offline at [maxMissedCycles].
+  ///
+  /// A target that never answered still degrades with consecutive misses - a
+  /// freshly added (or freshly booted) device that never replies must not stay
+  /// green forever. `unknown` is therefore only ever reported before the first
+  /// ping completes.
   HeartbeatAvailability _availability(_TargetState state) {
-    if (!state.everSeen || state.lastSeenAt == null) {
-      return HeartbeatAvailability.unknown;
-    }
     if (state.missedCycles >= maxMissedCycles) {
       return HeartbeatAvailability.offline;
     }
     if (state.missedCycles >= 1) {
       return HeartbeatAvailability.suspect;
+    }
+    if (!state.everSeen || state.lastSeenAt == null) {
+      return HeartbeatAvailability.unknown;
     }
     return HeartbeatAvailability.online;
   }

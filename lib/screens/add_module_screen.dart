@@ -206,7 +206,10 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
       connectionType: _connectionType,
       ipAddress: _ipController.text.trim(),
       tcpPort: int.tryParse(_tcpPortController.text.trim()) ?? 5008,
-      status: ConnectionStatus.online,
+      // A manually entered address has not been verified reachable yet: seed
+      // it offline and let the heartbeat/probe confirm it online. Seeding
+      // online here would show a module as reachable even when it is not.
+      status: ConnectionStatus.offline,
       roomName: AppLocalizations.of(context).unassigned,
       internalTempC: 25,
       tempMaxC: _temperatureThreshold(),
