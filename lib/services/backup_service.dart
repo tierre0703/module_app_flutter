@@ -25,7 +25,9 @@
 // breaking format change) are rejected with [BackupFromFutureException].
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -360,32 +362,70 @@ class BackupService {
     }
   }
 
-  /// Serialises the current app configuration to a versioned JSON backup file
-  /// in local storage. Pass [directory] to target a specific folder (tests).
-  /// Returns the written [File].
+  /// Serialises the current app configuration to a versioned JSON backup file.
+  /// Pass [directory] to target a specific folder (tests); otherwise the
+  /// platform's external storage is used when available (see
+  /// [defaultBackupDirectory]). Returns the written [File].
   Future<File> backup({Directory? directory}) async {
-    final doc = await _snapshot();
-    final dir = directory ?? await getApplicationDocumentsDirectory();
+    final dir = directory ?? await defaultBackupDirectory();
     if (!await dir.exists()) await dir.create(recursive: true);
     final file = File('${dir.path}${Platform.pathSeparator}$fileName');
-    const encoder = JsonEncoder.withIndent('  ');
-    await file.writeAsString(encoder.convert(doc.toJson()));
+    await file.writeAsBytes(await exportBytes());
     return file;
   }
 
-  /// Reads the local backup file, or null when none exists / is unreadable.
+  /// Serialises the current configuration to the versioned backup file's
+  /// bytes without writing them. Used by the "Save as" (SAF) flow so the
+  /// system dialog can write them to the user-designated external location.
+  Future<Uint8List> exportBytes() async {
+    final doc = await _snapshot();
+    const encoder = JsonEncoder.withIndent('  ');
+    return Uint8List.fromList(utf8.encode(encoder.convert(doc.toJson())));
+  }
+
+  /// Reads the backup file inside [directory], or null when none exists /
+  /// is unreadable.
   Future<BackupDocument?> readBackup({Directory? directory}) async {
-    final dir = directory ?? await getApplicationDocumentsDirectory();
+    final dir = directory ?? await defaultBackupDirectory();
     final file = File('${dir.path}${Platform.pathSeparator}$fileName');
+    return readBackupFromFile(file);
+  }
+
+  /// Reads the backup at the explicit [file] path (e.g. one picked by the
+  /// user), or null when it is missing / unreadable.
+  Future<BackupDocument?> readBackupFromFile(File file) async {
     if (!await file.exists()) return null;
     try {
-      final raw = await file.readAsString();
-      return BackupDocument.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      return parseBackupBytes(await file.readAsBytes());
+    } on Exception {
+      return null;
+    }
+  }
+
+  /// Parses [bytes] read from a user-picked backup file, or null when they do
+  /// not form a valid backup document.
+  static BackupDocument? parseBackupBytes(Uint8List bytes) {
+    try {
+      return BackupDocument.fromJson(
+          jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>);
     } on FormatException {
       return null;
     } on TypeError {
       return null;
     }
+  }
+
+  /// Resolves the directory backups are written to when the caller does not
+  /// designate one: the platform's external storage (Android) when available,
+  /// otherwise the app documents directory.
+  Future<Directory> defaultBackupDirectory() async {
+    try {
+      final external = await getExternalStorageDirectory();
+      if (external != null) return external;
+    } on UnsupportedError {
+      // Not supported on this platform; fall through.
+    }
+    return getApplicationDocumentsDirectory();
   }
 
   /// Applies [doc] to the app's stores.
@@ -512,5 +552,61 @@ class BackupService {
     await ScenarioStore.shared.replaceAll(doc.scenarios);
     await ModuleStore.shared.replaceAll(doc.modules);
     await AutomationStore.shared.replaceAll(doc.automations);
+  }
+}
+
+/// A backup file chosen via the native picker: its raw bytes (read through the
+/// content resolver, so no storage permission is needed) and original name.
+class BackupPickedFile {
+  const BackupPickedFile({required this.bytes, required this.name});
+
+  final Uint8List bytes;
+  final String name;
+}
+
+/// Opens the native save/open dialogs so the user can designate where a
+/// backup is written to or read from (external storage, Downloads, iCloud,
+/// ...). On Android and iOS these go through the system document pickers
+/// (Storage Access Framework / UIDocumentPicker), which run out-of-process and
+/// grant per-file access - no storage permission is required. The static
+/// function fields are replaced by widget tests with deterministic data,
+/// avoiding the platform channel.
+class BackupPathPicker {
+  BackupPathPicker._();
+
+  /// Opens the "Save as" dialog, writes [bytes] to the user-designated file
+  /// and returns the written file. Returns null when the user cancels.
+  static Future<File?> Function(Uint8List bytes) saveBackupFile =
+      _saveBackupFile;
+
+  /// Opens the JSON file picker and returns the chosen file's bytes.
+  /// Returns null when the user cancels.
+  static Future<BackupPickedFile?> Function() pickBackupFile =
+      _pickBackupFile;
+
+  /// Restores the default native pickers (used by tests in tearDown).
+  static void resetDefaults() {
+    saveBackupFile = _saveBackupFile;
+    pickBackupFile = _pickBackupFile;
+  }
+
+  static Future<File?> _saveBackupFile(Uint8List bytes) async {
+    final path = await FilePicker.platform.saveFile(
+      fileName: BackupService.fileName,
+      bytes: bytes,
+    );
+    return path == null ? null : File(path);
+  }
+
+  static Future<BackupPickedFile?> _pickBackupFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json'],
+      withData: true,
+    );
+    final file = result?.files.single;
+    final bytes = file?.bytes;
+    if (file == null || bytes == null) return null;
+    return BackupPickedFile(bytes: bytes, name: file.name);
   }
 }

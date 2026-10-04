@@ -35,11 +35,13 @@
          from battery optimizations so the persistent socket/heartbeat keeps
          running indefinitely. Not requested automatically. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
-    <!-- Read/write of the local backup file (soleux_backup.json).
-         The backup normally lives in the app's private Documents directory,
-         which needs no permission. The scoped declarations below cover the
-         case where the backup is read from / exported to the user's shared
-         storage on older Android releases: -->
+    <!-- Backup/restore external storage. The backup feature uses the system
+         document pickers (Storage Access Framework) for both directions: the
+         "Save as" dialog writes the backup file and the open dialog reads it.
+         SAF runs out-of-process and grants per-file/per-tree access, so NO
+         storage permission is required on any Android version (including
+         scoped-storage Android 11+). The scoped declarations below only cover
+         legacy raw-path access to shared storage on older releases: -->
     <!-- Android 10-12: reading non-media files from shared storage. Android 13+
          handles those through per-directory / file-native access instead. -->
     <uses-permission
