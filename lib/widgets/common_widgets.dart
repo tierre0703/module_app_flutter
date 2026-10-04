@@ -337,7 +337,10 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
     final m = widget.module;
     _nameController = TextEditingController(text: m.name);
     _ipController = TextEditingController(text: m.ipAddress);
-    _portController = TextEditingController(text: m.tcpPort.toString());
+    // The retired pre-migration default 5005 is presented as the current
+    // 5008 command HostPort.
+    final port = m.tcpPort == 5005 ? '5008' : m.tcpPort.toString();
+    _portController = TextEditingController(text: port);
     _tempController =
         TextEditingController(text: m.tempMaxC.toStringAsFixed(0));
     _connectionType =

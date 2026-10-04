@@ -598,7 +598,7 @@ class DeviceModule {
         name: json['name'] as String,
         type: ModuleType.values.byName(json['type'] as String),
         ipAddress: json['ipAddress'] as String,
-        tcpPort: (json['tcpPort'] as num?)?.toInt() ?? 5005,
+        tcpPort: DeviceModule._migratedTcpPort(json['tcpPort']),
         status: ConnectionStatus.values.byName(json['status'] as String),
         roomName: json['roomName'] as String? ?? 'Unassigned',
         internalTempC: (json['internalTempC'] as num?)?.toDouble() ?? 0,
@@ -630,6 +630,15 @@ class DeviceModule {
           ? DeviceSystemInfo.fromJson(
               (json['systemInfo'] as Map).cast<String, dynamic>())
           : null;
+
+  /// Resolves the persisted TCP port. The retired pre-migration default 5005
+  /// is treated as the current 5008 default (the legacy command port is gone);
+  /// a null value also degrades to 5008.
+  static int _migratedTcpPort(Object? raw) {
+    final stored = (raw as num?)?.toInt();
+    if (stored == null || stored == 5005) return 5008;
+    return stored;
+  }
 }
 
 /// Desired state of an input action in a scenario: drive the virtual input
