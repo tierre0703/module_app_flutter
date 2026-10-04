@@ -176,7 +176,10 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
       apiVersion: discovered.apiVersion,
       heartbeatPort: discovered.advertisedHeartbeatPort,
       caps: discovered.caps,
-      status: ConnectionStatus.online,
+      // Answering a discovery broadcast does not prove the module is still
+      // reachable: seed it offline (unverified) and let the heartbeat monitor
+      // confirm it online on the first successful pong.
+      status: ConnectionStatus.offline,
       roomName: AppLocalizations.of(context).unassigned,
       internalTempC: 25,
       tempMaxC: SettingsStore.shared.defaultTemperatureThreshold,
