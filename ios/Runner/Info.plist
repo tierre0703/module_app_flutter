@@ -47,9 +47,12 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Soleux Device Manager broadcasts on your local network and connects to Soleux PDU modules to discover, configure and monitor them.</string>
-	<!-- The app's own sandbox storage needs no permission; these expose the
-	     Documents folder (used for the local backup file) through the Files
-	     app so a backup can be exported, moved to a new phone and imported. -->
+	<!-- Backup/restore external storage. Backups are written and read through
+	     the system document picker (UIDocumentPickerViewController), which runs
+	     out-of-process and needs no Info.plist permission. These keys instead
+	     expose the app's own Documents folder (the default backup location)
+	     through the Files app so a backup can be exported, moved to a new
+	     phone and imported. -->
 	<key>UIFileSharingEnabled</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
