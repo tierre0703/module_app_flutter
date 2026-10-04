@@ -50,7 +50,7 @@ Ast: `✅` implemented · `🟡` partial (notes follow) · `❌` not implemented
 
 ### Hybrid Communication Protocol
 
-- [x] ✅ **Local Control** — `LanTransport` (TCP :5005) and per-module persistent `ModuleCommandService` with auto-reconnect.
+- [x] ✅ **Local Control** — `LanTransport` (TCP :5008) and per-module persistent `ModuleCommandService` with auto-reconnect.
 - [x] 🟡 **Remote Control (MQTT)** — `MqttTransport` class exists (`core/transport/mqtt_transport.dart`) and `mqtt_client` package is in `pubspec.yaml`, but **no consumer wires it** in screens/services. Failover is also a class only, not bound.
 - [x] ❌ Per-command LAN→MQTT failover resolver — `FailoverTransport` implemented as a class but **not instantiated** anywhere in the running app.
 

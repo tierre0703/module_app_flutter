@@ -19,18 +19,14 @@ Implemented services:
   2. Soleux DCP / Layer-2 commissioning over raw Ethernet frames with
      EtherType 0x88B5 (section 2). Raw sockets require Linux with
      root/CAP_NET_RAW; the server disables DCP gracefully elsewhere.
-  3. Unicast UDP heartbeat on `HostPort + 2` (default 5007, section 3).
-  4. A persistent legacy TCP command server (default 5005) that answers the
-     legacy `AT+...` protocol (AT-only, per the Control API spec: the J:
-     prefix is not accepted on the legacy port).
-  5. A persistent Control API TCP server on `HostPort + 3` (default 5008)
-     that answers the plain-JSON Control API envelope
-     (doc/Soleux_Control_API_Command_Specification_v0.2.md): the catalogue
-     actions (ping, set_output_state, toggle_output, restart_output,
-     set_dimmer_level, get_outputs, get_inputs, get_device_state,
-     get_capabilities, get_mappings) plus the implemented protocol 2 subset
-     (relay/page/transfer actions). The Control API does not use the J:
-     prefix.
+  3. Unicast UDP heartbeat on the fixed well-known port 5007 (section 3).
+  4. A persistent TCP command server (default 5008) on the shared command
+     HostPort that answers the legacy `AT+...` protocol, the legacy `J:`
+     JSON framing AND the plain-JSON Control API envelope on the same socket.
+  5. The Control API catalogue actions (ping, set_output_state, toggle_output,
+     restart_output, set_dimmer_level, get_outputs, get_inputs,
+     get_device_state, get_capabilities, get_mappings) plus the implemented
+     protocol 2 subset (relay/page/transfer actions).
 
 Usage:
 
@@ -65,10 +61,10 @@ from datetime import datetime, timedelta, timezone
 DISCOVERY_REQUEST_GUID = "8C93472D-2EF0-4B82-BE96-4FBBED57783F"
 DISCOVERY_PROTOCOL_VERSION = "2.0"
 DISCOVERY_PORT = 8000
-DEFAULT_TCP_PORT = 5005
-CONTROL_API_PORT = DEFAULT_TCP_PORT + 3  # legacy port + 3 (spec v0.2)
-CONTROL_API_VERSION = 3                  # target catalogue version
-HEARTBEAT_PORT = DEFAULT_TCP_PORT + 2    # legacy port + 2
+DEFAULT_TCP_PORT = 5008
+CONTROL_API_PORT = DEFAULT_TCP_PORT  # the command HostPort IS the Control API port
+CONTROL_API_VERSION = 3              # target catalogue version
+HEARTBEAT_PORT = 5007                # fixed well-known UDP heartbeat port
 ETHER_TYPE_L2 = 0x88B5
 ETH_MIN_FRAME = 60  # without FCS
 
@@ -223,7 +219,7 @@ class ModuleState:
 
     @property
     def heartbeat_port(self):
-        return DEFAULT_TCP_PORT + 2
+        return HEARTBEAT_PORT
 
 
 # ─── JSON protocol helpers ───────────────────────────────────────────────────
@@ -803,9 +799,9 @@ def handle_control_api_action(state, action, params, req_id):
 tcp_clients = {}
 tcp_clients_lock = threading.Lock()
 
-# Control API clients (port 5008, legacy + 3). Legacy AT-only clients get the
-# `OUT:`/`IN:` lines; Control API clients get the protocol-2 JSON broadcast
-# events (Soleux-Mobile-TCP-Protocol.md).
+# Clients on the shared 5008 command port. Control API clients get the
+# protocol-2 JSON broadcast events (Soleux-Mobile-TCP-Protocol.md); AT-only
+# clients get the legacy `OUT:`/`IN:` status lines.
 tcp_api_clients = set()
 
 
@@ -1263,9 +1259,9 @@ def handle_at_command(state, sock, line):
 
 def handle_line(state, sock, line):
     if line.startswith("J:"):
-        # Per the Control API spec the J: prefix is not accepted on the legacy
-        # Relay port (which is AT-only).
-        send_tcp(sock, "ERROR: J: prefix not accepted on legacy port\r\n")
+        # Kept for the legacy framing path; the shared command port accepts
+        # J: (and plain JSON) through handle_line_ctrl instead.
+        send_tcp(sock, "ERROR: J: prefix not accepted on the AT path\r\n")
         return
     result = handle_at_command(state, sock, line)
     if result == "EXIT":
@@ -1273,15 +1269,18 @@ def handle_line(state, sock, line):
 
 
 def handle_line_ctrl(state, sock, line):
+    text = line
+    if text.startswith("J:"):
+        # The single 5008 command port is shared: accept the legacy `J:`
+        # framing here too (the old separate legacy port is gone).
+        text = text[2:]
     try:
-        req = json.loads(line)
+        req = json.loads(text)
         if not isinstance(req, dict):
             raise ValueError("request is not an object")
     except (ValueError, UnicodeDecodeError):
-        send_tcp(sock, ctrl_json(state, None, 2, ok=False,
-                                 error={"code": "invalid_request",
-                                        "message": "malformed JSON"}))
-        return
+        # Not JSON - a legacy `AT+...` command on the shared command port.
+        return handle_at_command(state, sock, line)
     protocol = req.get("protocol")
     if not isinstance(protocol, int) or not (1 <= protocol <= 3):
         send_tcp(sock, ctrl_json(state, req.get("id"), 2, ok=False,
@@ -1316,17 +1315,16 @@ def tcp_client_handler(state, client_sock, addr, control_api=False):
     client_id = f"{addr[0]}:{addr[1]}"
     print(f"[TCP] connection from {addr}"
           + (" (Control API)" if control_api else ""))
-    if not control_api:
-        # Legacy port greeting (the AT-only legacy dump). The Control API port
-        # answers only JSON responses, so it sends no unsolicited greeting.
-        try:
-            greeting = [f"DEVICE:{state.profile['label']}",
-                        f"VER:{state.firmware}", f"SN:{state.serial}"]
-            for ch, out in enumerate(state.outputs):
-                greeting.append(f"OUT:{ch}:{'ON' if out['state'] else 'OFF'}")
-            send_tcp(client_sock, "\r\n".join(greeting) + "\r\n")
-        except Exception:
-            pass
+    # Shared command-port greeting (the AT-only status dump). JSON clients
+    # ignore the non-JSON greeting lines; AT clients use them.
+    try:
+        greeting = [f"DEVICE:{state.profile['label']}",
+                    f"VER:{state.firmware}", f"SN:{state.serial}"]
+        for ch, out in enumerate(state.outputs):
+            greeting.append(f"OUT:{ch}:{'ON' if out['state'] else 'OFF'}")
+        send_tcp(client_sock, "\r\n".join(greeting) + "\r\n")
+    except Exception:
+        pass
 
     with tcp_clients_lock:
         old = tcp_clients.pop(client_id, None)
@@ -1352,8 +1350,7 @@ def tcp_client_handler(state, client_sock, addr, control_api=False):
                 if not line.strip():
                     continue
                 print(f"[TCP] < {line}")
-                handler = handle_line_ctrl if control_api else handle_line
-                if handler(state, client_sock, line) == "EXIT":
+                if handle_line_ctrl(state, client_sock, line) == "EXIT":
                     return
     except (ConnectionResetError, BrokenPipeError, OSError):
         pass
@@ -1597,7 +1594,7 @@ def parse_args():
     parser.add_argument("--device", choices=sorted(DEVICE_PROFILES),
                         default="relay_module", help="device family to emulate")
     parser.add_argument("--tcp-port", type=int, default=DEFAULT_TCP_PORT,
-                        help="TCP command HostPort (default 5005)")
+                        help="TCP command HostPort (default 5008)")
     parser.add_argument("--discover-port", type=int, default=DISCOVERY_PORT,
                         help="UDP discovery broadcast port (default 8000)")
     parser.add_argument("--bind", default="0.0.0.0",
@@ -1630,7 +1627,7 @@ def main():
                         mac=args.mac, firmware=args.firmware)
 
     if args.tcp_port != DEFAULT_TCP_PORT:
-        raise SystemExit("the dummy serves one fixed HostPort 5005 for "
+        raise SystemExit("the dummy serves one fixed HostPort 5008 for "
                          "discovery/heartbeat; use --tcp-port only to move "
                          "the TCP service and adjust the code accordingly")
 
@@ -1641,18 +1638,14 @@ def main():
     print(f"  NAME         : {state.name}")
     print(f"  SN           : {state.serial}")
     print(f"  IP/MAC       : {state.ip} / {mac_text(state.mac)}")
-    print(f"  Legacy  HostPort (AT-only) : {args.tcp_port}")
-    print(f"  Control API  (legacy + 3)  : {args.tcp_port + 3}")
+    print(f"  Command/Control API HostPort : {args.tcp_port}")
     print(f"  UDP discover : {args.discover_port}")
     print(f"  UDP heartbeat: {state.heartbeat_port}")
     print("=" * 62)
 
     threads = [
         threading.Thread(target=tcp_server,
-                         args=(state, args.bind, args.tcp_port, False),
-                         daemon=True),
-        threading.Thread(target=tcp_server,
-                         args=(state, args.bind, args.tcp_port + 3, True),
+                         args=(state, args.bind, args.tcp_port, True),
                          daemon=True),
         threading.Thread(target=udp_discovery_server,
                          args=(state, args.bind, args.discover_port),

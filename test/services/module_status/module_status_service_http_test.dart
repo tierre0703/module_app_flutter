@@ -123,7 +123,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: 5005,
+      tcpPort: 5008,
       firmware: '7.12 Build :1',
       apiHttpPort: fake.port,
     );
@@ -179,7 +179,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: 5005,
+      tcpPort: 5008,
       firmware: '7.12 Build :1',
       apiHttpPort: fake.port,
     );

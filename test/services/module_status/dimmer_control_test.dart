@@ -201,7 +201,7 @@ void main() {
   setUp(() async {
     fake = await _FakeDimmerDevice.start();
     store = ModuleStore.forTesting();
-    // controlApiPort defaults to tcpPort + 3 -> point it at the fake server.
+    // controlApiPort = tcpPort -> point it at the fake server.
     module = DeviceModule(
       id: 'dim1',
       name: 'Dimmer',
@@ -210,7 +210,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
     service = ModuleStatusService(store: store);

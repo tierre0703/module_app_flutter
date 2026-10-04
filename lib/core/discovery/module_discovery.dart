@@ -80,7 +80,7 @@ class DiscoveredModule {
   final int? apiVersion;
 
   /// Advertised UDP heartbeat port (additive, normally 5007). When absent the
-  /// monitor probes the derived value `tcpPort + 2`.
+  /// monitor uses the fixed well-known heartbeat port (5007).
   final int? advertisedHeartbeatPort;
 
   /// Compact advertised capability identifiers (additive), e.g.
@@ -91,7 +91,8 @@ class DiscoveredModule {
   final SoleuxDeviceFamily? family;
 
   /// UDP heartbeat port for reachability checks: the advertised
-  /// HEARTBEAT_PORT when present, otherwise the derived `tcpPort + 2`.
+  /// HEARTBEAT_PORT when present, otherwise the fixed well-known heartbeat
+  /// port (5007).
   int get heartbeatPort =>
       advertisedHeartbeatPort ?? SoleuxConstants.heartbeatPort(tcpPort);
 

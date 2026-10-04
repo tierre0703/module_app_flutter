@@ -106,7 +106,7 @@ class ControlApiCommandProtocol implements ModuleCommandProtocol {
   /// Applies a Control API response: true only when the device accepted it.
   ///
   /// NOTE: the legacy AT fallback (re-sending `AT+ON`/`AT+OFF`/`AT+TOGGLE`/
-  /// `AT+RESTART`/`AT+BRIGH` on the legacy 5005 `J:` port when the Control API
+  /// `AT+RESTART`/`AT+BRIGH` on the legacy `J:` port when the Control API
   /// answers `unsupported_command`/`unknown_action`) is intentionally left out
   /// here. All current modules speak the Control API over the 5008 JSON port
   /// and must not be driven through the retired AT-command path.

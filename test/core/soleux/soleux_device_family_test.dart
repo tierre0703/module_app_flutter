@@ -68,9 +68,10 @@ void main() {
   });
 
   group('Constants', () {
-    test('heartbeat port is HostPort + 2', () {
-      expect(SoleuxConstants.heartbeatPort(5005), 5007);
-      expect(SoleuxConstants.heartbeatPort(8001), 8003);
+    test('heartbeat port is the fixed well-known 5007', () {
+      expect(SoleuxConstants.heartbeatPort(5008), 5007);
+      expect(SoleuxConstants.heartbeatPort(8001), 5007);
+      expect(SoleuxConstants.defaultHeartbeatPort, 5007);
     });
 
     test('discovery constants', () {
@@ -78,7 +79,7 @@ void main() {
           '8C93472D-2EF0-4B82-BE96-4FBBED57783F');
       expect(SoleuxConstants.discoveryVersion, '2.0');
       expect(SoleuxConstants.discoveryPort, 8000);
-      expect(SoleuxConstants.defaultCommandPort, 5005);
+      expect(SoleuxConstants.defaultCommandPort, 5008);
       expect(SoleuxConstants.maxNonceLength, 64);
     });
   });

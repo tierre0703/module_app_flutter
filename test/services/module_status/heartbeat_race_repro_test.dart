@@ -37,8 +37,7 @@ void main() {
       'commit-triggered refreshTargets during ping-await causes duplicate '
       'rapid pings / missed-cycle accumulation', () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'R');
-    final clientTcpPort = serverPort - 2;
+        await startPongServer(tcpPort: 5008, name: 'R');
     var pingCount = 0;
 
     final monitor = SoleuxHeartbeatMonitor(
@@ -57,7 +56,11 @@ void main() {
       monitor.refreshTargets([target]); // re-triggers _schedule during await
     };
 
-    monitor.start([('127.0.0.1', clientTcpPort)]);
+    monitor.start(const []);
+    monitor.refreshTargets([
+      HeartbeatTarget(
+          host: '127.0.0.1', tcpPort: 5008, heartbeatPort: serverPort),
+    ]);
     await Future<void>.delayed(const Duration(seconds: 2));
     monitor.stop();
     server.close();

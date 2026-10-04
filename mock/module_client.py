@@ -11,17 +11,17 @@ three network behaviours and a command surface so it can act as a harness for
                   listener (Soleux-Network-Discovery-and-DCP.md, and the
                   additive fields of
                   Soleux_Network_Discovery_and_Heartbeat_Specification_v0.1).
-  2. Heartbeat  - unicast UDP ping on the heartbeat port (legacy HostPort + 2,
-                  default 5007) with nonce correlation.
+  2. Heartbeat  - unicast UDP ping on the fixed well-known heartbeat port
+                   (default 5007) with nonce correlation.
   3. API commands - auto-detecting TCP client that negotiates the protocol by
                   sending ``hello``:
 
                   * v3 "Control API"  - plain JSON envelope ``{"protocol":3,...}``
-                    on the Control-API port (advertised ``API_PORT``, else
-                    legacy HostPort + 3, default 5008), per
+                    on the command HostPort (advertised ``API_PORT``, else the
+                    port itself, default 5008), per
                     Soleux_Control_API_Command_Specification_v0.2.
                   * v2               - ``J:``-prefixed JSON envelope on the
-                    legacy HostPort (default 5005), per
+                    command HostPort (default 5008), per
                     Soleux-Mobile-TCP-Protocol.md.
                   * legacy ``AT+...`` lines are also supported.
 
@@ -29,8 +29,8 @@ Usage (CLI):
 
     python mock/module_client.py discover [--window 3.0]
     python mock/module_client.py heartbeat --ip 127.0.0.1 [--port 5007] [--count 1]
-    python mock/module_client.py call --ip 127.0.0.1 [--port 5005] hello
-    python mock/module_client.py call --ip 127.0.0.1 --port 5005 get_relay_configuration
+    python mock/module_client.py call --ip 127.0.0.1 [--port 5008] hello
+    python mock/module_client.py call --ip 127.0.0.1 --port 5008 get_relay_configuration
 
 Usage (library):
 
@@ -65,9 +65,8 @@ from typing import Any, Dict, List, Optional, Tuple
 DISCOVERY_REQUEST_GUID = "8C93472D-2EF0-4B82-BE96-4FBBED57783F"
 DISCOVERY_PORT = 8000
 DEFAULT_CALLBACK_PORT = 8001
-DEFAULT_TCP_PORT = 5005
-HEARTBEAT_PORT_OFFSET = 2
-CONTROL_API_PORT_OFFSET = 3
+DEFAULT_TCP_PORT = 5008
+HEARTBEAT_PORT = 5007   # fixed well-known UDP heartbeat port
 DISCOVERY_PROTOCOL_VERSION = "2.0"
 
 DEVICE_FAMILY_GUIDS = {
@@ -159,17 +158,17 @@ class DiscoveredDevice:
 
     @property
     def inferred_control_api_port(self):
-        """Advertised API_PORT, else legacy port + 3 (probe only)."""
+        """Advertised API_PORT, else the command HostPort itself."""
         if self.control_api_port:
             return self.control_api_port
-        return self.legacy_tcp_port + CONTROL_API_PORT_OFFSET
+        return self.legacy_tcp_port
 
     @property
     def inferred_heartbeat_port(self):
-        """Advertised HEARTBEAT_PORT, else legacy port + 2."""
+        """Advertised HEARTBEAT_PORT, else the fixed well-known 5007."""
         if self.heartbeat_port:
             return self.heartbeat_port
-        return self.legacy_tcp_port + HEARTBEAT_PORT_OFFSET
+        return HEARTBEAT_PORT
 
     @property
     def connectable(self) -> bool:
@@ -460,14 +459,14 @@ def _consume_callback(results, peer_ip, text):
 
 
 def heartbeat_ping(ip: str, port: Optional[int] = None, nonce: Optional[str] = None,
-                   timeout_s: float = 1.5, legacy_port: int = DEFAULT_TCP_PORT,
+                   timeout_s: float = 1.5,
                    expect_host: Optional[str] = None) -> Dict[str, Any]:
     """Send one unicast heartbeat ping and validate the matching pong.
 
     Returns a dict with ``valid``, ``nonce``, ``tcp_port``, ``name``, optional
     additive endpoints, and ``round_trip_ms`` / ``last_seen_at``.
     """
-    port = port or legacy_port + HEARTBEAT_PORT_OFFSET
+    port = port or HEARTBEAT_PORT
     nonce = nonce or _new_nonce()
     sent_at = time.perf_counter()
     pong = {"soleux_heartbeat": 1, "op": "ping", "nonce": nonce}
@@ -563,8 +562,7 @@ class HeartbeatMonitor:
                 if self._stop.is_set():
                     break
                 outcome = heartbeat_ping(
-                    t["ip"], t["port"], timeout_s=self._window_s,
-                    legacy_port=t["legacy"])
+                    t["ip"], t["port"], timeout_s=self._window_s)
                 with self._lock:
                     if outcome["valid"]:
                         self._last_seen[t["key"]] = time.monotonic()
@@ -952,7 +950,7 @@ class SoleuxClient:
 
         # 1) Try the v3 Control API on the advertised/derived port.
         if prefer_v3:
-            probe_port = control_api_port or (port + CONTROL_API_PORT_OFFSET)
+            probe_port = control_api_port or port
             tried_v3 = cls._try_make(ip, probe_port, tempo=timeout_s, mode_v3=True)
             if tried_v3:
                 print(f"[client] negotiated v3 (control API) on "
@@ -1113,8 +1111,6 @@ def _cmd_discover(args):
 def _cmd_heartbeat(args):
     nonce = _new_nonce() if args.nonce is None else args.nonce
     out = heartbeat_ping(args.ip, args.port, nonce=nonce,
-                         legacy_port=args.port - HEARTBEAT_PORT_OFFSET
-                         if args.port else DEFAULT_TCP_PORT,
                          timeout_s=args.window)
     print(json.dumps(out, indent=2))
 
@@ -1193,7 +1189,7 @@ def build_parser():
     hb = sub.add_parser("heartbeat", help="single heartbeat ping")
     hb.add_argument("--ip", required=True)
     hb.add_argument("--port", type=int, default=None,
-                    help="heartbeat UDP port (default legacy+2)")
+                    help="heartbeat UDP port (default 5007)")
     hb.add_argument("--nonce", default=None)
     hb.add_argument("--window", type=float, default=1.5)
     hb.set_defaults(func=_cmd_heartbeat)
@@ -1201,7 +1197,7 @@ def build_parser():
     call = sub.add_parser("call", help="invoke an API command")
     call.add_argument("--ip", required=True)
     call.add_argument("--port", type=int, default=DEFAULT_TCP_PORT,
-                      help="TCP port to probe (default 5005)")
+                      help="TCP port to probe (default 5008)")
     call.add_argument("--api-port", type=int, default=None,
                       help="advertised Control API port override (v3)")
     call.add_argument("--timeout", type=float, default=6.0)

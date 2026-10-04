@@ -97,15 +97,19 @@ abstract final class SoleuxConstants {
   /// Well-known UDP port every Soleux device listens on for discovery.
   static const int discoveryPort = 8000;
 
-  /// Default/typical TCP command HostPort.
-  static const int defaultCommandPort = 5005;
+  /// Default/typical TCP command HostPort (the Control API port).
+  static const int defaultCommandPort = 5008;
+
+  /// Well-known UDP heartbeat port every Soleux device listens on.
+  static const int defaultHeartbeatPort = 5007;
 
   /// Maximum length of a heartbeat (or DCP) nonce, per the discovery spec.
   static const int maxNonceLength = 64;
 
-  /// The UDP heartbeat port for a device whose TCP HostPort is [tcpPort].
-  /// (doc/Soleux-Network-Discovery-and-DCP.md §3: `HostPort + 2`.)
-  static int heartbeatPort(int tcpPort) => tcpPort + 2;
+  /// The UDP heartbeat port to ping. The migration removed the legacy
+  /// `HostPort + 2` derivation: heartbeat is a fixed well-known port
+  /// (default 5007) independent of the TCP command port.
+  static int heartbeatPort(int tcpPort) => defaultHeartbeatPort;
 }
 
 /// Lookup helpers for the family registry.

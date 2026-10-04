@@ -23,7 +23,7 @@ import '../../core/soleux/soleux_json_protocol.dart';
 ///
 /// Implementations:
 ///   - [SoleuxJsonService] - persistent TCP socket on the Control API port
-///     (legacy port + 3, 5008 by default) or the legacy `J:` framing;
+///     (5008 by default) or the legacy `J:` framing;
 ///   - [SoleuxHttpService]  - stateless `POST /api/v1/command` on HTTP 80 /
 ///     HTTPS 443.
 abstract class SoleuxControlApiService {
@@ -197,7 +197,7 @@ abstract class SoleuxControlApiService {
   // retired get_dimmer_state/get_dimmer_levels/dimmer_on/dimmer_off commands.
   // set_dimmer_level, set_multiple_dimmer_levels, toggle_dimmer,
   // get_dimmer_frequency and set_dimmer_frequency remain on the Control API
-  // port (legacy port + 3, 5008 by default). Unimplemented catalogue actions
+  // port (5008 by default). Unimplemented catalogue actions
   // return the common `unsupported_command` error, which the caller can use to
   // fall back to the implemented subset.
   // ---------------------------------------------------------------------------

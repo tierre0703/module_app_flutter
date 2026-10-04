@@ -7,8 +7,8 @@
 //   - Appearance: the active ThemeMode (light / dark / system) and the
 //     Home theme palette (HomeThemeId).
 //   - Command protocol: whether Control API commands use the persistent TCP
-//     session (legacy port + 3, 5008 by default) or the stateless HTTP/HTTPS
-//     POST /api/v1/command endpoint
+//     session (the Control API port, 5008 by default) or the stateless
+//     HTTP/HTTPS POST /api/v1/command endpoint
 //     (doc/Soleux_Control_API_Command_Specification_v0.2.md §"Transport
 //     mapping").
 //
@@ -26,8 +26,8 @@ import '../theme/theme_palettes.dart';
 /// How the app talks to the Soleux Control API on the wire
 /// (doc/Soleux_Control_API_Command_Specification_v0.2.md §"Transport mapping").
 enum CommandTransportMode {
-  /// Persistent JSON TCP session on the Control API port (legacy port + 3,
-  /// 5008 by default). Receives pushed state changes on the same socket.
+  /// Persistent JSON TCP session on the Control API port (5008 by default).
+  /// Receives pushed state changes on the same socket.
   tcp,
 
   /// Stateless `POST /api/v1/command` over HTTP port 80.
