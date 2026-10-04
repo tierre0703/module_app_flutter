@@ -134,10 +134,10 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 1800));
 
     expect(store.byId('relay-2')!.status, ConnectionStatus.offline);
-    expect(
-        states,
-        containsAll(
-            [HeartbeatAvailability.online, HeartbeatAvailability.offline]));
+    // The module is seeded online from its persisted status, so the first
+    // pongs dedupe (no re-emitted `online`); the degradation to offline is
+    // what fires through onState.
+    expect(states, contains(HeartbeatAvailability.offline));
 
     service.stop();
   });

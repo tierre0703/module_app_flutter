@@ -165,6 +165,14 @@ class ModuleHeartbeatService {
           tcpPort: module.tcpPort,
           heartbeatPort: module.effectiveHeartbeatPort,
           key: module.id,
+          // Seed the monitor from the module's persisted status so an already
+          // offline module stays offline while pings keep failing, and an
+          // online one degrades to suspect on its first missed ping.
+          initialAvailability: switch (module.status) {
+            ConnectionStatus.online => HeartbeatAvailability.online,
+            ConnectionStatus.suspect => HeartbeatAvailability.suspect,
+            ConnectionStatus.offline => HeartbeatAvailability.offline,
+          },
         ),
     ];
     if (targets.isEmpty) {
