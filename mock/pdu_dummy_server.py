@@ -3,7 +3,7 @@
 PDU Dummy Server - TCP ASCII + UDP Discovery Protocol Simulator
 
 Based on PROTOCOLS.md:
-- TCP ASCII Server on port 5005
+- TCP ASCII Server on port 5008
 - UDP Discovery Server on port 8000
 
 Usage:
@@ -23,7 +23,7 @@ from flask_socketio import SocketIO, emit
 # ─── Configuration ───────────────────────────────────────────────────────────
 
 TCP_HOST = "0.0.0.0"
-TCP_PORT = 5005
+TCP_PORT = 5008
 TCP_BACKLOG = 5
 TCP_BUFFER_SIZE = 64
 
@@ -36,9 +36,8 @@ SOCKETIO_PORT = 8081
 
 DISCOVERY_REQUEST_GUID = "8481fba0-f387-11ea-adc1-0242ac120002"
 PDU_RESPONSE_GUID = "24d9b67e-f38d-11ea-adc1-0242ac120002"
-CONTROL_API_PORT_OFFSET = 3
-HEARTBEAT_PORT_OFFSET = 2
-HEARTBEAT_PORT = TCP_PORT + HEARTBEAT_PORT_OFFSET
+CONTROL_API_PORT = 5008   # the command HostPort IS the Control API port
+HEARTBEAT_PORT = 5007     # fixed well-known UDP heartbeat port
 PDU_MAC = "AA:BB:CC:DD:EE:01"
 
 IP_WHITELIST = set()
@@ -550,7 +549,7 @@ def udp_server():
                         f"SN:{device_info['SN']}\r\n"
                         f"NAME:{network_info['APP_NAME']}\r\n"
                         f"MAC:{PDU_MAC}\r\n"
-                        f"API_PORT:{TCP_PORT + CONTROL_API_PORT_OFFSET}\r\n"
+                        f"API_PORT:{CONTROL_API_PORT}\r\n"
                         f"HEARTBEAT_PORT:{HEARTBEAT_PORT}\r\n"
                         f"API_VER:3\r\n"
                         f"CAPS:control_api_v3,heartbeat,l2\r\n"
@@ -598,7 +597,7 @@ def heartbeat_server():
                 "nonce": nonce,
                 "tcp_port": TCP_PORT,
                 "name": network_info["APP_NAME"],
-                "api_port": TCP_PORT + CONTROL_API_PORT_OFFSET,
+                "api_port": CONTROL_API_PORT,
                 "api_version": 3,
                 "device_id": device_info["SN"],
                 "boot_id": "dummy-boot",
@@ -868,7 +867,7 @@ def main():
     print("  PDU Dummy Server")
     print(f"  TCP ASCII : {TCP_HOST}:{TCP_PORT}")
     print(f"  UDP Discov: {UDP_HOST}:{UDP_PORT}")
-    print(f"  UDP Heart : {UDP_HOST}:{HEARTBEAT_PORT} (TCP_PORT+2)")
+    print(f"  UDP Heart : {UDP_HOST}:{HEARTBEAT_PORT}")
     print(f"  Socket.IO : {SOCKETIO_HOST}:{SOCKETIO_PORT}")
     print("=" * 60)
 

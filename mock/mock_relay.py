@@ -27,10 +27,9 @@ import time
 DISCOVERY_REQUEST_GUID = "8C93472D-2EF0-4B82-BE96-4FBBED57783F"
 DISCOVERY_PROTOCOL_VERSION = "2.0"
 DISCOVERY_PORT = int(os.environ.get("SOLEUX_DISCOVERY_PORT", "8000"))
-DEFAULT_TCP_PORT = 5005
-CONTROL_API_PORT_OFFSET = 3
-HEARTBEAT_PORT_OFFSET = 2
-HEARTBEAT_PORT = DEFAULT_TCP_PORT + HEARTBEAT_PORT_OFFSET
+DEFAULT_TCP_PORT = 5008
+CONTROL_API_PORT = 5008       # the command HostPort IS the Control API port
+HEARTBEAT_PORT = 5007         # fixed well-known UDP heartbeat port
 DISCOVERY_RESPONSE_GUID = "579E6EA1-2F64-4CDE-8190-1CD3646EFAA1"
 DEVICE_MAC = "02:81:F9:30:81:F9"
 HTTP_PORT = "8083"
@@ -111,8 +110,8 @@ def NetworkDiscover():
                           f"SN:{get_cpu_serial_number()}\n" \
                           f"NAME:{s['app_name']}\n" \
                           f"MAC:{DEVICE_MAC}\n" \
-                          f"API_PORT:{int(s['tcp_port']) + CONTROL_API_PORT_OFFSET}\n" \
-                          f"HEARTBEAT_PORT:{int(s['tcp_port']) + HEARTBEAT_PORT_OFFSET}\n" \
+                          f"API_PORT:{CONTROL_API_PORT}\n" \
+                          f"HEARTBEAT_PORT:{HEARTBEAT_PORT}\n" \
                           f"API_VER:3\n" \
                           f"CAPS:control_api_v3,heartbeat,l2\n"
                     if(addr[0] == "192.168.30.182"):
@@ -165,7 +164,7 @@ def HeartbeatResponder():
                     "nonce": nonce,
                     "tcp_port": DEFAULT_TCP_PORT,
                     "name": APP_NAME,
-                    "api_port": DEFAULT_TCP_PORT + CONTROL_API_PORT_OFFSET,
+                    "api_port": CONTROL_API_PORT,
                     "api_version": 3,
                     "device_id": get_cpu_serial_number(),
                     "boot_id": "4d2f9c",

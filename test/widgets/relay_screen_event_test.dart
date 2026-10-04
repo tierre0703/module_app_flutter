@@ -159,7 +159,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 24,
-      tcpPort: fake.port - 3, // controlApiPort = tcpPort + 3 = fake.port
+      tcpPort: fake.port, // controlApiPort = tcpPort = fake.port
     );
 
     final store = ModuleStore.shared;
@@ -230,7 +230,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 24,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
 
     final store = ModuleStore.shared;

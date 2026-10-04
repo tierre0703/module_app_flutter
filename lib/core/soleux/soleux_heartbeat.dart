@@ -6,13 +6,13 @@
 // discovery broadcast, command channel or authentication mechanism.
 //
 // Wire contract:
-//   - the device listens on UDP `HostPort + 2` by default (e.g. 5007 for a
-//     5005 unit) unless discovery advertised an explicit HEARTBEAT_PORT;
+//   - the device listens on the fixed well-known UDP heartbeat port 5007
+//     unless discovery advertised an explicit HEARTBEAT_PORT;
 //   - the app sends a JSON `ping` by unicast to the known device IP:
 //       {"soleux_heartbeat":1,"op":"ping","nonce":"<64-char-max uuid>"}
 //   - the device replies `pong` to the request source IP + source UDP port:
 //       {"soleux_heartbeat":1,"op":"pong","nonce":"<same>",
-//        "tcp_port":5005,"name":"Plant Room Relays",
+//        "tcp_port":5008,"name":"Plant Room Relays",
 //        "api_port":5008,"api_version":3,
 //        "device_id":"0000000012345678","boot_id":"4d2f9c"}
 //
@@ -134,9 +134,9 @@ class SoleuxHeartbeat {
   SoleuxHeartbeat({this.acceptWindow = defaultAcceptWindow});
 
   /// Pings [host]'s heartbeat port using [nonce]. The heartbeat port is the
-  /// advertised [heartbeatPort] when supplied, otherwise [tcpPort] + 2.
-  /// Returns alive when a matching `pong` arrives within [acceptWindow]; dead
-  /// otherwise.
+  /// advertised [heartbeatPort] when supplied, otherwise the fixed well-known
+  /// port (5007). Returns alive when a matching `pong` arrives within
+  /// [acceptWindow]; dead otherwise.
   ///
   /// Per spec §4.5 the reply is only accepted when its source IP matches
   /// [host] (and, in [strictSourcePort] mode, its source port equals the
@@ -230,7 +230,7 @@ class SoleuxHeartbeat {
 enum HeartbeatAvailability { unknown, online, suspect, offline }
 
 /// A single device the heartbeat monitor watches. The heartbeat port is the
-/// advertised value when given, otherwise derived from the legacy TCP port.
+/// advertised value when given, otherwise the fixed well-known port (5007).
 class HeartbeatTarget {
   final String host;
   final int tcpPort;
@@ -296,8 +296,9 @@ class SoleuxHeartbeatMonitor {
   bool get running => _running;
 
   /// Starts pinging [targets] every [interval]. Each target is a
-  /// `(host, tcpPort)` pair (heartbeat port derived as `tcpPort + 2`).
-  /// Idempotent while already running (a re-start replaces the target set).
+  /// `(host, tcpPort)` pair (heartbeat port defaults to the fixed
+  /// well-known 5007). Idempotent while already running (a re-start replaces
+  /// the target set).
   void start(List<(String host, int tcpPort)> targets) {
     if (_running) stop();
     _running = true;

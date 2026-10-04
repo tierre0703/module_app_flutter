@@ -53,7 +53,7 @@ void main() {
 
   test('a live module is flipped online and lastSeenAt is recorded', () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'Relay');
+        await startPongServer(tcpPort: 5008, name: 'Relay');
     final store = ModuleStore.forTesting();
     await store.init();
 
@@ -62,8 +62,10 @@ void main() {
       name: 'Relay',
       type: ModuleType.relay,
       ipAddress: '127.0.0.1',
-      // heartbeatPort derives to serverPort while the TCP port stays nominal.
-      tcpPort: serverPort - 2,
+      // Heartbeat is the fixed well-known 5007 unless an explicit
+      // heartbeatPort is given; point it at the server's ephemeral port.
+      tcpPort: 5008,
+      heartbeatPort: serverPort,
       status: ConnectionStatus.offline,
       roomName: 'Cabin',
       internalTempC: 25,
@@ -94,7 +96,7 @@ void main() {
 
   test('a device that stops answering pings goes offline', () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'Relay');
+        await startPongServer(tcpPort: 5008, name: 'Relay');
     final store = ModuleStore.forTesting();
     await store.init();
 
@@ -103,7 +105,8 @@ void main() {
       name: 'Relay',
       type: ModuleType.relay,
       ipAddress: '127.0.0.1',
-      tcpPort: serverPort - 2,
+      tcpPort: 5008,
+      heartbeatPort: serverPort,
       status: ConnectionStatus.online,
       roomName: 'Cabin',
       internalTempC: 25,
@@ -143,7 +146,7 @@ void main() {
       'a module stays online while pongs succeed, even if other layers '
       'flip it offline', () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'Relay');
+        await startPongServer(tcpPort: 5008, name: 'Relay');
     final store = ModuleStore.forTesting();
     await store.init();
 
@@ -152,7 +155,8 @@ void main() {
       name: 'Relay',
       type: ModuleType.relay,
       ipAddress: '127.0.0.1',
-      tcpPort: serverPort - 2,
+      tcpPort: 5008,
+      heartbeatPort: serverPort,
       status: ConnectionStatus.offline,
       roomName: 'Cabin',
       internalTempC: 25,
@@ -186,7 +190,7 @@ void main() {
   test('pollFleetOnce flips online/offline via a one-shot UDP pass', () async {
     // relay-6 answers (live) while relay-7 has no server (dead).
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'Relay');
+        await startPongServer(tcpPort: 5008, name: 'Relay');
     final store = ModuleStore.forTesting();
     await store.init();
 
@@ -195,7 +199,8 @@ void main() {
       name: 'Relay',
       type: ModuleType.relay,
       ipAddress: '127.0.0.1',
-      tcpPort: serverPort - 2,
+      tcpPort: 5008,
+      heartbeatPort: serverPort,
       status: ConnectionStatus.suspect,
       roomName: 'Cabin',
       internalTempC: 25,
@@ -205,7 +210,8 @@ void main() {
       name: 'Relay',
       type: ModuleType.relay,
       ipAddress: '127.0.0.1',
-      tcpPort: 1, // unreachable heartbeat port
+      tcpPort: 5008,
+      heartbeatPort: 1, // unreachable heartbeat port
       status: ConnectionStatus.suspect,
       roomName: 'Cabin',
       internalTempC: 25,
@@ -228,7 +234,7 @@ void main() {
 
   test('removing a module stops its heartbeat targets', () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'Relay');
+        await startPongServer(tcpPort: 5008, name: 'Relay');
     final store = ModuleStore.forTesting();
     await store.init();
 
@@ -237,7 +243,8 @@ void main() {
       name: 'Relay',
       type: ModuleType.relay,
       ipAddress: '127.0.0.1',
-      tcpPort: serverPort - 2,
+      tcpPort: 5008,
+      heartbeatPort: serverPort,
       status: ConnectionStatus.online,
       roomName: 'Cabin',
       internalTempC: 25,

@@ -6,6 +6,8 @@
 import 'package:flutter/material.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
+import '../core/soleux/soleux_device_family.dart';
+
 /// Seven modern preset colors offered for a scenario's background. Selecting
 /// one makes the scenario's Home quick-access card render with that color.
 const List<Color> kScenarioBackgroundPresets = [
@@ -464,7 +466,7 @@ class DeviceModule {
     required this.status,
     required this.roomName,
     required this.internalTempC,
-    int tcpPort = 5005,
+    int tcpPort = 5008,
     this.tempMinC = 0,
     this.tempMaxC = 60,
     this.firmware,
@@ -514,7 +516,7 @@ class DeviceModule {
   int? apiVersion;
 
   /// Advertised UDP heartbeat port (normally 5007). Null means the monitor
-  /// derives it from [tcpPort] (`tcpPort + 2`).
+  /// uses the fixed well-known heartbeat port (5007).
   int? heartbeatPort;
 
   /// Advertised compact capability identifiers (`control_api_v3`, etc.).
@@ -524,22 +526,22 @@ class DeviceModule {
   DateTime? lastSeenAt;
 
   /// UDP port heartbeat pings are directed at: advertised when present,
-  /// otherwise the derived legacy `tcpPort + 2` (spec §3 endpoint selection).
-  int get effectiveHeartbeatPort => heartbeatPort ?? tcpPort + 2;
+  /// otherwise the fixed well-known heartbeat port (5007).
+  int get effectiveHeartbeatPort =>
+      heartbeatPort ?? SoleuxConstants.defaultHeartbeatPort;
 
-  /// TCP port the module listens on (default 5005). Backed by a nullable
+  /// TCP port the module listens on (default 5008). Backed by a nullable
   /// field so legacy persisted JSON (or any null) degrades to the default.
   int? _tcpPort;
-  int get tcpPort => _tcpPort ?? 5005;
+  int get tcpPort => _tcpPort ?? 5008;
   set tcpPort(int value) => _tcpPort = value;
 
   /// Control API TCP port used by the JSON Control API transport
   /// (doc/Soleux_Control_API_Command_Specification_v0.3.md §"Transport
-  /// mapping"): the advertised [apiPort] when present, otherwise the legacy
-  /// TCP port + 3 (`5005 -> 5008`). Per the discovery/heartbeat spec, when
-  /// `API_PORT` is absent a client may probe `PORT + 3` but must complete the
-  /// Control API `hello` exchange before treating the device as Control API.
-  int get controlApiPort => apiPort ?? tcpPort + 3;
+  /// mapping"): the advertised [apiPort] when present, otherwise the module's
+  /// [tcpPort] itself (default 5008). The legacy `tcpPort + 3` offset is gone:
+  /// the command HostPort IS the Control API port now.
+  int get controlApiPort => apiPort ?? tcpPort;
 
   /// Whether the module advertised the Control API transport (via discovery
   /// `API_PORT`/`API_VER`/`CAPS` or a heartbeat identity). Used to pick the

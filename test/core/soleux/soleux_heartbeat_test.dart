@@ -91,31 +91,29 @@ void main() {
 
   test('ping() returns alive and the matched pong', () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'Plant Room Relays');
-    // The client targets the heartbeat port, which is `tcpPort + 2`. Choose the
-    // TCP port so the computed heartbeat port equals the server's ephemeral
-    // bound port.
-    final clientTcpPort = serverPort - 2;
+        await startPongServer(tcpPort: 5008, name: 'Plant Room Relays');
+    // Heartbeat is the fixed well-known 5007 unless an explicit heartbeatPort
+    // is given; point the client at the server's ephemeral bound port.
     final client = SoleuxHeartbeat(acceptWindow: const Duration(seconds: 2));
 
-    final result =
-        await client.ping('127.0.0.1', clientTcpPort, nonce: 'test-nonce-0001');
+    final result = await client.ping('127.0.0.1', 5008,
+        heartbeatPort: serverPort, nonce: 'test-nonce-0001');
 
     expect(result.alive, isTrue);
     expect(result.pong, isNotNull);
     expect(result.pong!.nonce, 'test-nonce-0001');
-    expect(result.pong!.tcpPort, 5005);
+    expect(result.pong!.tcpPort, 5008);
     expect(result.pong!.name, 'Plant Room Relays');
     server.close();
   });
 
   test('uses an explicitly advertised heartbeat port (§4.2)', () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'Dimmer');
+        await startPongServer(tcpPort: 5008, name: 'Dimmer');
     final client = SoleuxHeartbeat(acceptWindow: const Duration(seconds: 1));
 
     // tcpPort is intentionally a wrong/arbitrary value: the advertised
-    // heartbeat port wins over the derived `tcpPort + 2`.
+    // heartbeat port wins over the fixed well-known 5007.
     final result = await client.ping('127.0.0.1', 1234,
         heartbeatPort: serverPort, nonce: 'explicit-port');
 
@@ -132,7 +130,8 @@ void main() {
         SoleuxHeartbeat(acceptWindow: const Duration(milliseconds: 300));
     final result = await client.ping(
       '127.0.0.1',
-      silent.port - 2, // targets the silent heartbeat port
+      5008,
+      heartbeatPort: silent.port, // targets the silent heartbeat port
       nonce: 'no-reply-nonce',
     );
     expect(result.alive, isFalse);
@@ -199,8 +198,7 @@ void main() {
   test('SoleuxHeartbeatMonitor ticks periodically and reports reachability',
       () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5007, name: 'PDU Meter');
-    final clientTcpPort = serverPort - 2;
+        await startPongServer(tcpPort: 5008, name: 'PDU Meter');
     final results = <HeartbeatResult>[];
     final monitor = SoleuxHeartbeatMonitor(
       interval: const Duration(milliseconds: 200),
@@ -208,21 +206,24 @@ void main() {
     );
     monitor.onResult = (host, port, result) => results.add(result);
 
-    monitor.start([('127.0.0.1', clientTcpPort)]);
+    monitor.start(const []);
+    monitor.refreshTargets([
+      HeartbeatTarget(
+          host: '127.0.0.1', tcpPort: 5008, heartbeatPort: serverPort),
+    ]);
     await Future<void>.delayed(const Duration(milliseconds: 450));
     monitor.stop();
 
     expect(results, isNotEmpty);
     expect(results.every((r) => r.alive), isTrue);
-    expect(results.every((r) => r.pong!.tcpPort == 5007), isTrue);
+    expect(results.every((r) => r.pong!.tcpPort == 5008), isTrue);
     server.close();
   });
 
   test('monitor transitions online -> suspect -> offline on missed pings',
       () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'Relay');
-    final clientTcpPort = serverPort - 2;
+        await startPongServer(tcpPort: 5008, name: 'Relay');
     final states = <HeartbeatAvailability>[];
     final monitor = SoleuxHeartbeatMonitor(
       // Small accept window so a miss cycle (timeout + interval) is quick and
@@ -233,7 +234,11 @@ void main() {
     );
     monitor.onState = (target, state) => states.add(state);
 
-    monitor.start([('127.0.0.1', clientTcpPort)]);
+    monitor.start(const []);
+    monitor.refreshTargets([
+      HeartbeatTarget(
+          host: '127.0.0.1', tcpPort: 5008, heartbeatPort: serverPort),
+    ]);
     await pumpUntil(() => states.contains(HeartbeatAvailability.online));
     server.close(); // the device stops answering pings
     await pumpUntil(() => states.contains(HeartbeatAvailability.offline));
@@ -282,7 +287,6 @@ void main() {
       } catch (_) {}
     });
 
-    final clientTcpPort = socket.port - 2;
     final states = <HeartbeatAvailability>[];
     final monitor = SoleuxHeartbeatMonitor(
       interval: const Duration(milliseconds: 150),
@@ -291,7 +295,11 @@ void main() {
     );
     monitor.onState = (target, state) => states.add(state);
 
-    monitor.start([('127.0.0.1', clientTcpPort)]);
+    monitor.start(const []);
+    monitor.refreshTargets([
+      HeartbeatTarget(
+          host: '127.0.0.1', tcpPort: 5008, heartbeatPort: socket.port),
+    ]);
     await pumpUntil(() => states.contains(HeartbeatAvailability.online));
 
     // One to two missed pings flag the target suspect, but never offline.
@@ -314,8 +322,7 @@ void main() {
   test('a few missed cycles do not flip a live target offline (no flicker)',
       () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'Relay');
-    final clientTcpPort = serverPort - 2;
+        await startPongServer(tcpPort: 5008, name: 'Relay');
     final states = <HeartbeatAvailability>[];
     final monitor = SoleuxHeartbeatMonitor(
       interval: const Duration(milliseconds: 200),
@@ -324,7 +331,11 @@ void main() {
     );
     monitor.onState = (target, state) => states.add(state);
 
-    monitor.start([('127.0.0.1', clientTcpPort)]);
+    monitor.start(const []);
+    monitor.refreshTargets([
+      HeartbeatTarget(
+          host: '127.0.0.1', tcpPort: 5008, heartbeatPort: serverPort),
+    ]);
     await Future<void>.delayed(const Duration(milliseconds: 520));
     expect(states, contains(HeartbeatAvailability.online));
 
@@ -347,10 +358,11 @@ void main() {
 
   test('refreshTargets keeps per-target state by key', () async {
     final (server, serverPort) =
-        await startPongServer(tcpPort: 5005, name: 'Relay');
+        await startPongServer(tcpPort: 5008, name: 'Relay');
     final target = HeartbeatTarget(
       host: '127.0.0.1',
-      tcpPort: serverPort - 2,
+      tcpPort: 5008,
+      heartbeatPort: serverPort,
       key: 'module-1',
     );
     final monitor = SoleuxHeartbeatMonitor(
@@ -358,7 +370,8 @@ void main() {
       acceptWindow: const Duration(seconds: 1),
     );
 
-    monitor.start([('127.0.0.1', target.tcpPort)]);
+    monitor.start(const []);
+    monitor.refreshTargets([target]);
     await Future<void>.delayed(const Duration(milliseconds: 200));
 
     // Refreshing with an equivalent keyed target restarts the keyed state but
