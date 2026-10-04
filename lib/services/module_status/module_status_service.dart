@@ -1381,11 +1381,19 @@ class ModuleStatusService {
   static const Duration _jsonHelloTimeout = Duration(seconds: 2);
 
   /// Gets the persistent unit for [module], creating (and wiring) it the first
-  /// time. Its live streams are routed into the store on creation only.
+  /// time. Its live streams are routed into the store on creation only. A unit
+  /// bound to a different endpoint (the module's IP or TCP port changed, e.g.
+  /// via the edit-module-info dialog) is disposed and recreated so it never
+  /// keeps reconnecting to the stale port.
   ModuleCommandService _ensureUnit(
       DeviceModule module, ModuleStatusFetcher fetcher) {
     final existing = _units[module.id];
-    if (existing != null) return existing;
+    if (existing != null &&
+        existing.connection.host == module.ipAddress &&
+        existing.connection.port == module.tcpPort) {
+      return existing;
+    }
+    if (existing != null) existing.dispose();
 
     final unit = ModuleCommandService(
       connection: ModuleTcpConnection(
