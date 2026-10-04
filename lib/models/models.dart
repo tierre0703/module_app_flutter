@@ -487,7 +487,7 @@ class DeviceModule {
 
   final String id;
   String name;
-  final ModuleType type;
+  ModuleType type;
   String ipAddress;
 
   /// Firmware/build reported by the module (e.g. `AT+VER` → `VER:`).
