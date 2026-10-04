@@ -191,7 +191,9 @@ class DcpIdentity {
       name: fields['name'] as String? ?? '',
       serial: fields['serial'] as String? ?? '',
       firmware: fields['firmware'] as String? ?? '',
-      port: fields['port'] is num ? (fields['port'] as num).toInt() : 5005,
+      port: fields['port'] is num
+          ? (fields['port'] as num).toInt()
+          : SoleuxConstants.defaultCommandPort,
       ip: fields['ip'] as String? ?? '0.0.0.0',
       mask: fields['mask'] as String? ?? '0.0.0.0',
       gateway: fields['gateway'] as String? ?? '0.0.0.0',

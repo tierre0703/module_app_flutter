@@ -77,11 +77,13 @@ void main() {
       expect(module.connectable, isTrue);
     });
 
-    test('heartbeatPort falls back to the derived tcpPort + 2 when absent', () {
+    test('heartbeatPort falls back to the fixed well-known 5007 when absent',
+        () {
       final module = DiscoveredModule.parseIdentityResponse(
-          'GUID:579E6EA1-2F64-4CDE-8190-1CD3646EFAA1\r\nPORT:5005\r\n',
+          'GUID:579E6EA1-2F64-4CDE-8190-1CD3646EFAA1\r\nPORT:5008\r\n',
           '10.0.0.1')!;
       expect(module.advertisedHeartbeatPort, isNull);
+      expect(module.heartbeatPort, SoleuxConstants.defaultHeartbeatPort);
       expect(module.heartbeatPort, 5007);
       expect(
           module.heartbeatPort, SoleuxConstants.heartbeatPort(module.tcpPort));
@@ -145,10 +147,11 @@ void main() {
       expect(unknown.tcpPort, 5005);
     });
 
-    test('defaults the port to 5005 when absent', () {
+    test('defaults the port to 5008 when absent', () {
       final module = DiscoveredModule.parseIdentityResponse(
           'GUID:C47A5A88-03E8-4EC0-9F2D-67A6C43F0D91\r\nSN:1\r\n', '1.2.3.4');
       expect(module!.tcpPort, SoleuxConstants.defaultCommandPort);
+      expect(module.tcpPort, 5008);
     });
   });
 

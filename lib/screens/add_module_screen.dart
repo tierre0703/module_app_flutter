@@ -32,7 +32,7 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
 
   final _nameController = TextEditingController();
   final _ipController = TextEditingController();
-  final _tcpPortController = TextEditingController(text: '5005');
+  final _tcpPortController = TextEditingController(text: '5008');
   late final TextEditingController _tempThresholdController;
   ModuleType _manualType = ModuleType.relay;
   String _connectionType = 'local_network';
@@ -205,7 +205,7 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
       type: _manualType,
       connectionType: _connectionType,
       ipAddress: _ipController.text.trim(),
-      tcpPort: int.tryParse(_tcpPortController.text.trim()) ?? 5005,
+      tcpPort: int.tryParse(_tcpPortController.text.trim()) ?? 5008,
       status: ConnectionStatus.online,
       roomName: AppLocalizations.of(context).unassigned,
       internalTempC: 25,
@@ -389,7 +389,7 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
                   labelText: l10n.tcpPort,
-                  hintText: '5005',
+                  hintText: '5008',
                   prefixIcon: const Icon(Icons.router_outlined)),
             ),
             const SizedBox(height: 12),

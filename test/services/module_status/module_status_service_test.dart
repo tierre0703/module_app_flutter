@@ -159,7 +159,7 @@ void main() {
       () async {
     final fake = await _FakeDevice.start();
     final store = ModuleStore.forTesting();
-    // controlApiPort defaults to tcpPort + 3 -> point it at the fake server.
+    // controlApiPort = tcpPort -> point it at the fake server.
     final module = DeviceModule(
       id: 'm1',
       name: 'Relays',
@@ -168,7 +168,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -211,7 +211,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -250,7 +250,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -280,7 +280,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -321,7 +321,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -361,7 +361,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3, // controlApiPort resolves to the fake server
+      tcpPort: fake.port, // controlApiPort resolves to the fake server
       firmware: '7.12 Build :1',
     );
     await store.replaceAll([module]);
@@ -437,7 +437,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -483,7 +483,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -543,7 +543,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -577,7 +577,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -613,7 +613,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 25,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -643,7 +643,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 
@@ -675,7 +675,7 @@ void main() {
       status: ConnectionStatus.offline,
       roomName: 'Room',
       internalTempC: 30,
-      tcpPort: fake.port - 3,
+      tcpPort: fake.port,
     );
     await store.replaceAll([module]);
 

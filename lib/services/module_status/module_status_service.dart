@@ -12,7 +12,9 @@
 // Which wire protocol a module speaks is decided by [ModuleProtocolSelector]
 // from its firmware version (doc/Soleux_Control_API_Command_Specification_v0.3.md):
 //
-//   - firmware >= 7.12              -> Control API (JSON) on legacy port + 3;
+//   - firmware >= 7.12              -> Control API (JSON) on the Control API
+//                                      port (the command HostPort, default
+//                                      5008);
 //   - firmware <  7.12              -> legacy TCP AT (doc/PROTOCOLS.md §1);
 //   - firmware unknown/advertised   -> probed, falling back to the transport
 //     the device really answers (Control API -> legacy `J:` -> AT).
@@ -875,8 +877,8 @@ class ModuleStatusService {
   ///
   /// The ping follows the same firmware-driven protocol selection as a full
   /// refresh: a Control API module is pinged with a JSON `ping` on the Control
-  /// API port (legacy port + 3); a legacy module answers `AT\r` on the legacy
-  /// TCP port.
+  /// API port (the command HostPort, default 5008); a legacy module answers
+  /// `AT\r` on the legacy TCP port.
   Future<ModuleStatusResult> pollAll() async {
     await store.init();
     final modules = store.modules;
@@ -897,7 +899,7 @@ class ModuleStatusService {
   /// response, closing it immediately after. Returns whether it answered.
   /// Unsupported module types are treated as offline. The ping honours the
   /// app's Control API transport choice: a TCP mode module is pinged with a
-  /// JSON `ping` on legacy port + 3, an HTTP/HTTPS mode module with a JSON
+  /// JSON `ping` on the Control API port, an HTTP/HTTPS mode module with a JSON
   /// `ping` POSTed to /api/v1/command.
   Future<bool> _pollConnectivity(DeviceModule module) async {
     final live = store.byId(module.id) ?? module;
@@ -918,7 +920,7 @@ class ModuleStatusService {
 
     // Unknown firmware: Control API devices (discovery advertised the Control
     // API endpoint) are pinged over the JSON envelope on the configured
-    // transport (TCP legacy port + 3, or HTTP/HTTPS /api/v1/command).
+    // transport (TCP Control API port, or HTTP/HTTPS /api/v1/command).
     // Everything else - AT-only and legacy `J:` devices - still answers the
     // legacy `AT\r` ping on the legacy TCP port during migration.
     return live.isControlApiAdvertised
@@ -1085,8 +1087,9 @@ class ModuleStatusService {
     // Soleux JSON path first for unknown-firmware modules (the recommended
     // protocol for new mobile clients). The probe follows the app's Control API
     // transport setting:
-    //   - TCP mode (default): the Control API on legacy port + 3 (plain JSON
-    //     envelope) then the legacy `J:` protocol for pre-Control-API devices;
+    //   - TCP mode (default): the Control API on the Control API port (plain
+    //     JSON envelope) then the legacy `J:` protocol for pre-Control-API
+    //     devices;
     //   - HTTP/HTTPS mode: the Control API endpoint POST /api/v1/command.
     // Either way it falls back to the legacy AT+ dump when nothing answers.
     final mode = _commandTransport();
@@ -1162,8 +1165,9 @@ class ModuleStatusService {
 
   /// Refreshes a Control API module (firmware >= 7.12) over the app's
   /// configured Control API transport: the TCP session on the Control API port
-  /// (legacy port + 3) or the stateless HTTP/HTTPS command endpoint. Because
-  /// the firmware pins the Control API, no legacy AT probing is performed.
+  /// (the command HostPort, default 5008) or the stateless HTTP/HTTPS command
+  /// endpoint. Because the firmware pins the Control API, no legacy AT probing
+  /// is performed.
   Future<bool> _refreshControlApi(DeviceModule live) async {
     final unit = _ensureControlApiUnit(live);
     final ok = await _tryJsonHello(unit, live);
@@ -1182,11 +1186,12 @@ class ModuleStatusService {
   /// Probes a module for the Soleux JSON protocol using both framings and
   /// ports, then fetches the configuration to build the live module state.
   ///
-  /// Probe order (per the Control API spec v0.2 transport mapping):
-  ///   1. Control API on `legacy port + 3` (plain JSON envelope, no `J:`
-  ///      prefix) - the modern Relay transport;
-  ///   2. legacy `J:` protocol on the legacy TCP port - pre-Control-API
-  ///      devices;
+  /// Probe order (per the Control API spec transport mapping):
+  ///   1. Control API on the Control API port (plain JSON envelope, no `J:`
+  ///      prefix) - the modern transport. The command HostPort IS the Control
+  ///      API port now (default 5008), so this is the primary probe;
+  ///   2. legacy `J:` protocol on the legacy TCP port when it differs from the
+  ///      Control API port - pre-Control-API devices;
   ///   3. otherwise the module is a legacy AT+ device.
   ///
   /// Returns:
@@ -1197,24 +1202,29 @@ class ModuleStatusService {
   ///   - `null`  when the TCP path is fine but no JSON `hello` arrived in time
   ///             - a legacy AT+ device, so the caller falls back to AT+.
   Future<bool?> _probeSoleuxJson(DeviceModule live) async {
-    // 1) Control API (plain JSON on legacy port + 3). Skipped when the ports
-    // coincide so a single-socket legacy device is not double-probed.
+    // 1) Control API (plain JSON) on the Control API port. Always probed
+    // first: since the migration the command port IS the Control API port, so
+    // a single-socket device on 5008 must be offered the plain JSON framing.
     final controlPort = live.controlApiPort;
-    if (controlPort != live.tcpPort) {
-      final controlUnit = _ensureJsonUnit(live,
-          port: controlPort, framing: SoleuxJsonFraming.controlApi);
-      final controlOk = await _tryJsonHello(controlUnit, live);
-      if (controlOk == true) {
-        await _fetchRelayConfiguration(controlUnit, live);
-        return true;
-      }
-      if (controlOk == false) {
-        _disposeJsonUnit(live.id);
-      }
-      // controlOk == null: socket alive but no hello in time - try legacy.
+    final controlUnit = _ensureJsonUnit(live,
+        port: controlPort, framing: SoleuxJsonFraming.controlApi);
+    final controlOk = await _tryJsonHello(controlUnit, live);
+    if (controlOk == true) {
+      await _fetchRelayConfiguration(controlUnit, live);
+      return true;
     }
+    if (controlOk == false) {
+      _disposeJsonUnit(live.id);
+    }
+    // controlOk == null: socket alive but no hello in time - try legacy.
 
-    // 2) Legacy `J:` framing on the legacy TCP port.
+    // 2) Legacy `J:` framing on the legacy TCP port, but only when it is a
+    // distinct socket from the Control API probe (avoid double-probing the
+    // same single-socket device).
+    if (live.tcpPort == controlPort) {
+      _disposeJsonUnit(live.id);
+      return null;
+    }
     final legacyUnit = _ensureJsonUnit(live,
         port: live.tcpPort, framing: SoleuxJsonFraming.legacyJ);
     final legacyOk = await _tryJsonHello(legacyUnit, live);

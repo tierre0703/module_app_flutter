@@ -16,10 +16,9 @@
 //
 // Dimmer modules are the exception: per the spec "Implemented AC/DC Dimmer
 // profile", the active dimmer firmware exposes the protocol 2 command subset
-// on the Control API port (legacy port + 3, 5008 by default) independently of
-// the relay >= 7.12 gate, so a dimmer's version string must never pin it to
-// legacy AT. Dimmers are always left probeable and reach the 5008 Control API
-// first.
+// on the Control API port (5008 by default) independently of the relay >= 7.12
+// gate, so a dimmer's version string must never pin it to legacy AT. Dimmers
+// are always left probeable and reach the 5008 Control API first.
 import '../../core/soleux/soleux_firmware_version.dart';
 import '../../models/models.dart';
 import 'module_command_protocol.dart';
