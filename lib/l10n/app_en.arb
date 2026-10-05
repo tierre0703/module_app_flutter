@@ -151,8 +151,6 @@
   "connectionCloud": "Cloud Connection",
   "ipAddress": "IP address",
   "tcpPort": "TCP port",
-  "apiPort": "API port",
-  "heartbeatPort": "Heartbeat port",
 
   "modelRelay": "Standard Relay",
   "modelBlind": "Blind Motor Control",

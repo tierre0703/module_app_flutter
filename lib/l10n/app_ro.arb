@@ -151,8 +151,6 @@
   "connectionCloud": "Conexiune cloud",
   "ipAddress": "Adresă IP",
   "tcpPort": "Port TCP",
-  "apiPort": "Port API",
-  "heartbeatPort": "Port de heartbeat",
 
   "modelRelay": "Releu Standard",
   "modelBlind": "Control Motor Oblon",

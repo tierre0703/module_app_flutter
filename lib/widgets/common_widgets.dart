@@ -272,10 +272,10 @@ Future<String?> showTextInputDialog(
   return (result == null || result.isEmpty) ? null : result;
 }
 
-/// Dialog editing a module's identity (name, IP address, TCP/API/heartbeat
-/// ports, type, connection type) in place. Returns true when the user saved;
-/// the passed [module] is updated directly and the edit is persisted + pushed
-/// into the running status/heartbeat services.
+/// Dialog editing a module's identity (name, IP address, TCP port, type,
+/// connection type) in place. Returns true when the user saved; the passed
+/// [module] is updated directly and the edit is persisted + pushed into the
+/// running status/heartbeat services.
 Future<bool> showEditModuleInfoDialog(
     BuildContext context, DeviceModule module) async {
   final result = await showDialog<ModuleInfoResult>(
@@ -292,19 +292,17 @@ Future<bool> showEditModuleInfoDialog(
     }
     final port = result.port;
     if (port != null) module.tcpPort = port;
-    // A null port means "use the default": the Control API falls back to the
-    // module's TCP port and the heartbeat to the well-known 5007.
-    module.apiPort = result.apiPort;
-    module.heartbeatPort = result.heartbeatPort;
     final tempThreshold = result.tempThreshold;
     if (tempThreshold != null && tempThreshold > 0) {
       module.tempMaxC = tempThreshold.clamp(0, 100);
     }
 
-    // Persist the edit and reflect the new ports in the running services:
+    // Persist the edit and reflect the new port in the running services:
     // commit() notifies the heartbeat monitor (which rebuilds its target set),
     // and refreshOne() re-probes the module over the changed Control API /
-    // legacy port so the new ports take effect immediately.
+    // legacy port so the new port takes effect immediately. The Control API
+    // port follows the TCP port (`apiPort ?? tcpPort`); the heartbeat port is
+    // the fixed well-known 5007 unless the module advertised another one.
     await ModuleStore.shared.commit();
     await ModuleStatusService.shared.refreshOne(module);
   }
@@ -321,8 +319,6 @@ class ModuleInfoResult {
     this.type,
     this.connectionType,
     this.port,
-    this.apiPort,
-    this.heartbeatPort,
     this.tempThreshold,
   });
 
@@ -332,8 +328,6 @@ class ModuleInfoResult {
   final ModuleType? type;
   final String? connectionType;
   final int? port;
-  final int? apiPort;
-  final int? heartbeatPort;
   final double? tempThreshold;
 }
 
@@ -350,8 +344,6 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _ipController;
   late final TextEditingController _portController;
-  late final TextEditingController _apiPortController;
-  late final TextEditingController _heartbeatPortController;
   late final TextEditingController _tempController;
   late ModuleType _type;
   late String? _connectionType;
@@ -367,11 +359,6 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
     // 5008 command HostPort.
     final port = m.tcpPort == 5005 ? '5008' : m.tcpPort.toString();
     _portController = TextEditingController(text: port);
-    // Empty means "use the default" (Control API falls back to the TCP port,
-    // heartbeat to the well-known 5007).
-    _apiPortController = TextEditingController(text: m.apiPort?.toString() ?? '');
-    _heartbeatPortController =
-        TextEditingController(text: m.heartbeatPort?.toString() ?? '');
     _tempController =
         TextEditingController(text: m.tempMaxC.toStringAsFixed(0));
     _connectionType =
@@ -385,8 +372,6 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
     _nameController.dispose();
     _ipController.dispose();
     _portController.dispose();
-    _apiPortController.dispose();
-    _heartbeatPortController.dispose();
     _tempController.dispose();
     super.dispose();
   }
@@ -403,8 +388,6 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
               type: _type,
               connectionType: _connectionType,
               port: int.tryParse(_portController.text.trim()),
-              apiPort: int.tryParse(_apiPortController.text.trim()),
-              heartbeatPort: int.tryParse(_heartbeatPortController.text.trim()),
               tempThreshold: double.tryParse(_tempController.text.trim()),
             )
           : const ModuleInfoResult(saved: false, name: '', ip: ''),
@@ -507,24 +490,6 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
                   labelText: AppLocalizations.of(context).tcpPort,
                   hintText: '5008',
                   prefixIcon: const Icon(Icons.router_outlined)),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _apiPortController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).apiPort,
-                  hintText: '5008',
-                  prefixIcon: const Icon(Icons.dns_outlined)),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _heartbeatPortController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).heartbeatPort,
-                  hintText: '5007',
-                  prefixIcon: const Icon(Icons.sensors_outlined)),
             ),
             const SizedBox(height: 12),
             TextField(
