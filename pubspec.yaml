@@ -2,7 +2,7 @@ name: soleux_device_manager
 description: "Relay, PDU, AC Dimmer and DC Dimmer configuration and monitoring."
 publish_to: 'none'
 
-version: 1.0.18+9
+version: 1.0.19+10
 
 environment:
   sdk: ^3.5.4
