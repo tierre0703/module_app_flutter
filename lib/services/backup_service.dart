@@ -581,8 +581,7 @@ class BackupPathPicker {
 
   /// Opens the JSON file picker and returns the chosen file's bytes.
   /// Returns null when the user cancels.
-  static Future<BackupPickedFile?> Function() pickBackupFile =
-      _pickBackupFile;
+  static Future<BackupPickedFile?> Function() pickBackupFile = _pickBackupFile;
 
   /// Restores the default native pickers (used by tests in tearDown).
   static void resetDefaults() {

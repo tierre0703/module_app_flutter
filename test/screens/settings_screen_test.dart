@@ -140,8 +140,7 @@ void main() {
   testWidgets('Restore of a non-backup file shows the no-backup notice',
       (tester) async {
     BackupPathPicker.pickBackupFile = () async => BackupPickedFile(
-        bytes: Uint8List.fromList(utf8.encode('not a backup')),
-        name: 'x.json');
+        bytes: Uint8List.fromList(utf8.encode('not a backup')), name: 'x.json');
     await pumpSettings(tester);
     await tapAndSettle(tester, find.widgetWithText(OutlinedButton, 'Restore'));
 
@@ -169,8 +168,8 @@ void main() {
     expect(find.text('Configuration restored from backup.'), findsOneWidget);
   });
 
-testWidgets('Back Up Now writes the backup via the save dialog',
-    (tester) async {
+  testWidgets('Back Up Now writes the backup via the save dialog',
+      (tester) async {
     await pumpSettings(tester);
     await tapAndSettle(
         tester, find.widgetWithText(FilledButton, 'Back Up Now'));

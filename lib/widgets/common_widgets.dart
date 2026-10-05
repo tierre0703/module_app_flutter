@@ -428,8 +428,7 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
                     ),
                   ),
               ],
-              onChanged: (value) =>
-                  setState(() => _type = value ?? _type),
+              onChanged: (value) => setState(() => _type = value ?? _type),
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(

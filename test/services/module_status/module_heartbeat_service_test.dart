@@ -273,8 +273,7 @@ void main() {
     server.close();
   });
 
-  test(
-      'a manually-added module that never answers goes offline, not online',
+  test('a manually-added module that never answers goes offline, not online',
       () async {
     // A module freshly added by IP that is unreachable (no pong server on the
     // heartbeat port): its first few pings miss, so it must degrade to suspect
