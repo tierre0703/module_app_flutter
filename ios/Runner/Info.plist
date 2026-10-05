@@ -47,6 +47,14 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Soleux Device Manager broadcasts on your local network and connects to Soleux PDU modules to discover, configure and monitor them.</string>
+	<!-- The bundled file-picker library links the photo-library and camera
+	     APIs, so App Store validation requires purpose strings even though the
+	     app only opens the document picker (FileType.custom) to import backup
+	     files. These strings describe that behavior accurately. -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Soleux Device Manager lets you select a file to import from your photo library when you choose to do so. Selected items are used only for the action you requested and are never uploaded or shared.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Soleux Device Manager lets you capture a file with the camera when you choose to do so. Captured items are used only for the action you requested and are never uploaded or shared.</string>
 	<!-- Backup/restore external storage. Backups are written and read through
 	     the system document picker (UIDocumentPickerViewController), which runs
 	     out-of-process and needs no Info.plist permission. These keys instead
