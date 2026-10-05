@@ -356,6 +356,35 @@ void main() {
     server.close();
   });
 
+  test('a never-seen target that never answers degrades suspect -> offline',
+      () async {
+    // A socket bound to a port that never replies: the target has never been
+    // seen, so a monitor that kept such a target `unknown` forever would leave
+    // a freshly added unreachable module showing as online.
+    final silent =
+        await RawDatagramSocket.bind(InternetAddress.loopbackIPv4, 0);
+    final states = <HeartbeatAvailability>[];
+    final monitor = SoleuxHeartbeatMonitor(
+      interval: const Duration(milliseconds: 150),
+      acceptWindow: const Duration(milliseconds: 60),
+      maxMissedCycles: 3,
+    );
+    monitor.onState = (target, state) => states.add(state);
+
+    monitor.start(const []);
+    monitor.refreshTargets([
+      HeartbeatTarget(
+          host: '127.0.0.1', tcpPort: 5008, heartbeatPort: silent.port),
+    ]);
+    await pumpUntil(() => states.contains(HeartbeatAvailability.offline));
+    monitor.stop();
+    silent.close();
+
+    expect(states, contains(HeartbeatAvailability.suspect));
+    expect(states.indexOf(HeartbeatAvailability.suspect),
+        lessThan(states.indexOf(HeartbeatAvailability.offline)));
+  });
+
   test('refreshTargets keeps per-target state by key', () async {
     final (server, serverPort) =
         await startPongServer(tcpPort: 5008, name: 'Relay');

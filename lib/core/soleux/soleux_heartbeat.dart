@@ -218,15 +218,20 @@ class SoleuxHeartbeat {
   }
 }
 
-/// Availability of a monitored heartbeat target, derived from a consecutive
-/// missed-ping counter:
-///   - `unknown`: no pong has ever been received yet;
+/// Availability of a monitored heartbeat target, derived from the last ping
+/// result and the target's previous state:
+///   - `unknown`: no ping has completed yet (initial state);
 ///   - `online`: the last ping succeeded;
-///   - `suspect`: the last ping failed but fewer than [SoleuxHeartbeatMonitor.maxMissedCycles];
-///   - `offline`: [SoleuxHeartbeatMonitor.maxMissedCycles] pings failed in a row.
+///   - `suspect`: the last ping failed, the target was previously online, and
+///     fewer than [SoleuxHeartbeatMonitor.maxMissedCycles] pings have failed
+///     in a row;
+///   - `offline`: [SoleuxHeartbeatMonitor.maxMissedCycles] pings failed in a
+///     row, or the target was already offline and pings keep failing.
 /// A successful pong always returns the target to `online` and resets the
-/// failure counter. (The spec's `connected` state is reported by an active
-/// Control API session in a higher layer, not by the heartbeat.)
+/// failure counter. A target already offline stays offline while pings keep
+/// failing - it must not bounce back to suspect just because another ping
+/// missed. (The spec's `connected` state is reported by an active Control API
+/// session in a higher layer, not by the heartbeat.)
 enum HeartbeatAvailability { unknown, online, suspect, offline }
 
 /// A single device the heartbeat monitor watches. The heartbeat port is the
@@ -241,11 +246,19 @@ class HeartbeatTarget {
   /// Stable per-module identity used to keep monitor state across refreshes.
   final String key;
 
+  /// The availability the target is seeded with when its monitor state is
+  /// first created (e.g. the module's persisted status on a cold start), so a
+  /// module that is already offline stays offline while pings keep failing
+  /// instead of bouncing through suspect. Null means the monitor starts in
+  /// [HeartbeatAvailability.unknown].
+  final HeartbeatAvailability? initialAvailability;
+
   HeartbeatTarget({
     required this.host,
     required this.tcpPort,
     int? heartbeatPort,
     this.key = '',
+    this.initialAvailability,
   }) : heartbeatPort = heartbeatPort ?? SoleuxConstants.heartbeatPort(tcpPort);
 
   /// The stabilization key: [key] when provided, else `host:heartbeatPort`.
@@ -390,7 +403,6 @@ class SoleuxHeartbeatMonitor {
       );
 
       if (result.alive && result.pong != null) {
-        state.everSeen = true;
         state.missedCycles = 0;
         state.lastSeenAt = DateTime.now();
         onPong?.call(state.target, result.pong!);
@@ -398,7 +410,7 @@ class SoleuxHeartbeatMonitor {
         state.missedCycles++;
       }
       onResult?.call(state.target.host, state.target.tcpPort, result);
-      _reportAvail(state);
+      _reportAvail(state, result.alive);
     } finally {
       state.inFlight = false;
       // Schedule the next cycle only when we are still the current run: a
@@ -412,27 +424,33 @@ class SoleuxHeartbeatMonitor {
     }
   }
 
-  void _reportAvail(_TargetState state) {
-    final next = _availability(state);
+  void _reportAvail(_TargetState state, bool alive) {
+    final next = _availability(state, alive);
     if (next == state.lastReported) return;
     state.lastReported = next;
     onState?.call(state.target, next);
   }
 
-  /// Availability derived from the consecutive-miss counter:
-  /// unknown before any pong; online with no misses; suspect with at least one
-  /// miss but fewer than [maxMissedCycles]; offline at [maxMissedCycles].
-  HeartbeatAvailability _availability(_TargetState state) {
-    if (!state.everSeen || state.lastSeenAt == null) {
-      return HeartbeatAvailability.unknown;
+  /// Availability derived from the last ping result and the target's previous
+  /// state:
+  ///   - a successful pong returns the target online;
+  ///   - a target already offline stays offline while pings keep failing (an
+  ///     offline target must not bounce back to suspect);
+  ///   - otherwise [maxMissedCycles] consecutive failures degrade the target
+  ///     from suspect (previously online) to offline.
+  /// A target that never answered still degrades with consecutive misses - a
+  /// freshly added (or freshly booted) device that never replies must not stay
+  /// green forever. `unknown` is the initial state before the first ping
+  /// completes and is never reported after that.
+  HeartbeatAvailability _availability(_TargetState state, bool alive) {
+    if (alive) return HeartbeatAvailability.online;
+    if (state.lastReported == HeartbeatAvailability.offline) {
+      return HeartbeatAvailability.offline;
     }
     if (state.missedCycles >= maxMissedCycles) {
       return HeartbeatAvailability.offline;
     }
-    if (state.missedCycles >= 1) {
-      return HeartbeatAvailability.suspect;
-    }
-    return HeartbeatAvailability.online;
+    return HeartbeatAvailability.suspect;
   }
 }
 
@@ -442,8 +460,12 @@ class _TargetState {
   Timer? timer;
   DateTime? lastSeenAt;
   int missedCycles = 0;
-  bool everSeen = false;
-  HeartbeatAvailability lastReported = HeartbeatAvailability.unknown;
+
+  /// The availability most recently computed (and reported via `onState`) for
+  /// this target. Seeded from [HeartbeatTarget.initialAvailability] so a module
+  /// that is already offline (persisted status) keeps that state instead of
+  /// being re-derived from scratch on a cold start.
+  HeartbeatAvailability lastReported;
 
   /// True while a ping for this target is in flight, so refreshes do not lay
   /// down a competing timer in the await window.
@@ -453,5 +475,7 @@ class _TargetState {
   /// to chain its own next cycle (prevents orphaned duplicate ping loops).
   int generation = 0;
 
-  _TargetState(this.target);
+  _TargetState(this.target)
+      : lastReported =
+            target.initialAvailability ?? HeartbeatAvailability.unknown;
 }

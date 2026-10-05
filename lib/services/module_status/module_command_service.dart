@@ -65,6 +65,11 @@ class ModuleCommandService {
   /// Connection up/down transitions, forwarded from [ModuleTcpConnection].
   Stream<bool> get connectionStateStream => _connection.connectionStateStream;
 
+  /// The underlying TCP connection, exposed so the status service can detect
+  /// a changed endpoint (host/port) and recreate the unit instead of keeping a
+  /// stale socket bound to the old port.
+  ModuleTcpConnection get connection => _connection;
+
   bool get isConnected => _connection.isConnected;
 
   ModuleCommandService({

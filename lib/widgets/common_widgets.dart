@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
 import '../models/models.dart';
+import '../services/module_status/module_status_service.dart';
+import '../services/module_store.dart';
 import '../theme/app_theme.dart';
 
 /// Small green/amber/red dot used everywhere a module's connectivity status is
@@ -270,8 +272,10 @@ Future<String?> showTextInputDialog(
   return (result == null || result.isEmpty) ? null : result;
 }
 
-/// Dialog editing a module's identity (name, IP address, TCP port) in place.
-/// Returns true when the user saved; the passed [module] is updated directly.
+/// Dialog editing a module's identity (name, IP address, TCP port, type,
+/// connection type) in place. Returns true when the user saved; the passed
+/// [module] is updated directly and the edit is persisted + pushed into the
+/// running status/heartbeat services.
 Future<bool> showEditModuleInfoDialog(
     BuildContext context, DeviceModule module) async {
   final result = await showDialog<ModuleInfoResult>(
@@ -292,6 +296,15 @@ Future<bool> showEditModuleInfoDialog(
     if (tempThreshold != null && tempThreshold > 0) {
       module.tempMaxC = tempThreshold.clamp(0, 100);
     }
+
+    // Persist the edit and reflect the new port in the running services:
+    // commit() notifies the heartbeat monitor (which rebuilds its target set),
+    // and refreshOne() re-probes the module over the changed Control API /
+    // legacy port so the new port takes effect immediately. The Control API
+    // port follows the TCP port (`apiPort ?? tcpPort`); the heartbeat port is
+    // the fixed well-known 5007 unless the module advertised another one.
+    await ModuleStore.shared.commit();
+    await ModuleStatusService.shared.refreshOne(module);
   }
   return result?.saved == true;
 }
@@ -475,6 +488,7 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
               keyboardType: TextInputType.number,
               decoration: InputDecoration(
                   labelText: AppLocalizations.of(context).tcpPort,
+                  hintText: '5008',
                   prefixIcon: const Icon(Icons.router_outlined)),
             ),
             const SizedBox(height: 12),
