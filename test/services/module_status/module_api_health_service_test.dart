@@ -145,6 +145,45 @@ void main() {
     await device.close();
   });
 
+  test('an unknown module goes back online as soon as the API answers',
+      () async {
+    final device = await _FakeApiDevice.start();
+    final store = ModuleStore.forTesting();
+    final module = buildModule(port: device.port);
+    await store.replaceAll([module]);
+
+    final service = ModuleApiHealthService.forTesting(store: store);
+    expect(await service.checkOne(module), ConnectionStatus.online);
+
+    // API breaks -> unknown.
+    device.answering = false;
+    expect(await service.checkOne(module), ConnectionStatus.unknown);
+
+    // API recovers -> the module must switch straight back to online.
+    device.answering = true;
+    expect(await service.checkOne(module), ConnectionStatus.online);
+    expect(store.byId('m1')!.status, ConnectionStatus.online);
+
+    await device.close();
+  });
+
+  test('an offline module goes back online as soon as the API answers',
+      () async {
+    final store = ModuleStore.forTesting();
+    final module = buildModule(port: 1);
+    await store.replaceAll([module]);
+
+    final service = ModuleApiHealthService.forTesting(store: store);
+    expect(await service.checkOne(module), ConnectionStatus.offline);
+
+    // The module comes back on a live API port.
+    final device = await _FakeApiDevice.start();
+    store.byId('m1')!.tcpPort = device.port;
+    expect(await service.checkOne(store.byId('m1')!), ConnectionStatus.online);
+
+    await device.close();
+  });
+
   test('an online module that disappears entirely becomes offline', () async {
     final device = await _FakeApiDevice.start();
     final store = ModuleStore.forTesting();

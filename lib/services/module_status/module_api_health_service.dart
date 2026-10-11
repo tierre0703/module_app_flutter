@@ -169,42 +169,65 @@ class ModuleApiHealthService {
     final live = store.byId(module.id) ?? module;
     final previous = live.status;
 
-    final bool apiAlive = await _apiAnswers(live);
+    // true = API answered, false = socket opened but the API did not answer,
+    // null = the socket itself could not be opened (module unreachable).
+    final bool? api = await _apiAnswers(live);
 
     final ConnectionStatus next;
-    if (apiAlive) {
+    if (api == true) {
+      // Recovery always wins: as soon as the 5008 API answers, the module is
+      // online again - from unknown and from offline alike.
       next = ConnectionStatus.online;
       live.lastSeenAt = DateTime.now();
-    } else if (previous == ConnectionStatus.online ||
-        previous == ConnectionStatus.unknown) {
-      // The module was already reachable. Distinguish "device gone" (socket
-      // dead -> offline) from "device up, API broken" (socket opens but the
-      // API does not answer -> unknown).
-      next = await _socketReachable(live)
-          ? ConnectionStatus.unknown
-          : ConnectionStatus.offline;
+    } else if (api == false) {
+      // The socket opened: the device is on the network, so a module that is
+      // not answering the API is `unknown`. A module that never answered is
+      // still `offline` until it is confirmed.
+      next = previous == ConnectionStatus.offline
+          ? ConnectionStatus.offline
+          : ConnectionStatus.unknown;
     } else {
-      // Never seen online: it can only be offline, never unknown.
+      // Socket dead / unreachable - the module is gone.
       next = ConnectionStatus.offline;
+      final reachable = await _socketReachable(live);
+      if (reachable && previous != ConnectionStatus.offline) {
+        // It is back on the network but the API session could not be opened:
+        // report the degraded state rather than offline.
+        return _apply(
+            live, ConnectionStatus.unknown, previous, commit: false);
+      }
     }
 
+    return _apply(live, next, previous);
+  }
+
+  ConnectionStatus _apply(DeviceModule live, ConnectionStatus next,
+      ConnectionStatus previous,
+      {bool commit = true}) {
     if (live.status != next) {
       live.status = next;
-      _scheduleCommit();
+      if (commit) {
+        _scheduleCommit();
+      }
       debugPrint('ModuleApiHealthService: ${live.name} (${live.id}) '
           '${previous.name} -> ${next.name}');
     }
     return next;
   }
 
-  /// True when the module's 5008 Control API answers a `hello`.
+  /// Checks the module's 5008 Control API.
   ///
   /// Prefers the persistent unit already owned by [ModuleStatusService] (so a
   /// broken session is detected exactly where the probe sees it). When there is
   /// no live unit, a throw-away socket performs the same hello round-trip.
-  Future<bool> _apiAnswers(DeviceModule module) async {
+  ///
+  /// Returns true (API answered), false (socket open, no API answer) or null
+  /// (socket could not be opened).
+  Future<bool?> _apiAnswers(DeviceModule module) async {
     final unit = _statusService?.call()?.jsonCommandServiceFor(module.id);
     if (unit != null && unit.isConnected) {
+      // The persistent session is live; a failed hello means the API is
+      // broken while the socket still exists.
       return _helloOk(unit);
     }
     return _transientHello(module);
@@ -220,13 +243,24 @@ class ModuleApiHealthService {
     }
   }
 
-  /// Opens a short-lived Control API socket and sends `hello`. A dead socket
-  /// (refused / unreachable) reports the module as not answering.
-  Future<bool> _transientHello(DeviceModule module) async {
+  /// Opens a short-lived Control API socket and sends `hello`.
+  ///
+  /// Returns true when the module answered `ok` (API alive), false when the
+  /// socket opened but nothing valid came back in time (socket alive, API
+  /// broken), and **null** when the socket itself could not be opened (module
+  /// unreachable - the caller reports offline).
+  Future<bool?> _transientHello(DeviceModule module) async {
     Socket? socket;
     final port = module.controlApiPort;
     try {
       socket = await Socket.connect(module.ipAddress, port, timeout: timeout);
+      if (!socket.remoteAddress.address.isNotEmpty) return null;
+    } catch (e) {
+      debugPrint('ModuleApiHealthService: API socket ${module.ipAddress}:'
+          '$port not reachable: $e');
+      return null;
+    }
+    try {
       socket.setOption(SocketOption.tcpNoDelay, true);
       final id = DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
       socket.write(SoleuxJsonRequest(
@@ -237,13 +271,13 @@ class ModuleApiHealthService {
 
       final hello = await _firstJsonResponse(socket, id);
       return hello?.ok ?? false;
-    } catch (e) {
-      debugPrint('ModuleApiHealthService: API socket ${module.ipAddress}:'
-          '$port not reachable: $e');
+    } catch (e, st) {
+      debugPrint('ModuleApiHealthService: API hello on ${module.ipAddress}:'
+          '$port failed: $e\n$st');
       return false;
     } finally {
       try {
-        socket?.destroy();
+        socket.destroy();
       } catch (e, st) {
         debugPrint('ModuleApiHealthService: socket destroy failed: $e\n$st');
       }
@@ -275,21 +309,31 @@ class ModuleApiHealthService {
   Future<SoleuxJsonResponseLike?> _firstJsonResponse(
       Socket socket, int id) async {
     final completer = Completer<SoleuxJsonResponseLike?>();
-    late StreamSubscription<String> subscription;
+    final buffer = StringBuffer();
+    late StreamSubscription<List<int>> subscription;
     final timer = Timer(_helloTimeout, () {
       if (!completer.isCompleted) completer.complete(null);
     });
 
-    subscription = socket
-        .cast<List<int>>()
-        .transform<String>(utf8.decoder)
-        .transform<String>(const LineSplitter())
-        .listen(
-      (line) {
-        final decoded = _decodeResponse(line, id);
-        if (decoded != null && !completer.isCompleted) {
-          completer.complete(decoded);
+    subscription = socket.listen(
+      (bytes) {
+        // Decode per chunk and split on \n: a response may arrive split across
+        // TCP segments, so bytes are accumulated before decoding.
+        buffer.write(utf8.decode(bytes, allowMalformed: true));
+        var text = buffer.toString();
+        var index = text.indexOf('\n');
+        while (index >= 0) {
+          final line = text.substring(0, index).trim();
+          text = text.substring(index + 1);
+          index = text.indexOf('\n');
+          final decoded = _decodeResponse(line, id);
+          if (decoded != null && !completer.isCompleted) {
+            completer.complete(decoded);
+          }
         }
+        buffer
+          ..clear()
+          ..write(text);
       },
       onDone: () {
         if (!completer.isCompleted) completer.complete(null);
