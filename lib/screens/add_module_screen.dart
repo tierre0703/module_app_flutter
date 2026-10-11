@@ -360,12 +360,12 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
                           tooltip: l10n.addModuleAddSelectedCount(
                               _selected.length),
                           onPressed: _addSelected,
-                          icon: const Icon(Icons.add),
+                          icon: const Icon(Icons.add_circle_outline),
                         ),
                         IconButton(
                           tooltip: l10n.addModuleDeselectAll,
                           onPressed: _clearSelection,
-                          icon: const Icon(Icons.close),
+                          icon: const Icon(Icons.clear_all),
                         ),
                       ],
                     )
