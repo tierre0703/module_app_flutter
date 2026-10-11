@@ -35,6 +35,7 @@ import 'package:flutter/foundation.dart';
 import '../../core/soleux/soleux_json_protocol.dart';
 import '../../models/models.dart';
 import '../module_store.dart';
+import 'module_host_resolver.dart';
 import 'module_status_service.dart';
 import 'soleux_control_api_service.dart';
 
@@ -245,21 +246,19 @@ class ModuleApiHealthService {
 
   /// Opens a short-lived Control API socket and sends `hello`.
   ///
+  /// [module.ipAddress] may be a literal IPv4/IPv6 address *or* a domain name
+  /// (remote mode). A domain can resolve to several addresses (e.g. IPv6 +
+  /// IPv4), so every resolved address is tried in turn until one socket opens;
+  /// the first that opens is the one `hello` is sent on.
+  ///
   /// Returns true when the module answered `ok` (API alive), false when the
   /// socket opened but nothing valid came back in time (socket alive, API
-  /// broken), and **null** when the socket itself could not be opened (module
+  /// broken), and **null** when no socket could be opened at all (module
   /// unreachable - the caller reports offline).
   Future<bool?> _transientHello(DeviceModule module) async {
-    Socket? socket;
     final port = module.controlApiPort;
-    try {
-      socket = await Socket.connect(module.ipAddress, port, timeout: timeout);
-      if (!socket.remoteAddress.address.isNotEmpty) return null;
-    } catch (e) {
-      debugPrint('ModuleApiHealthService: API socket ${module.ipAddress}:'
-          '$port not reachable: $e');
-      return null;
-    }
+    final Socket? socket = await _openSocket(module.ipAddress, port);
+    if (socket == null) return null;
     try {
       socket.setOption(SocketOption.tcpNoDelay, true);
       final id = DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
@@ -284,20 +283,29 @@ class ModuleApiHealthService {
     }
   }
 
-  /// True when a TCP socket to the module's 5008 API port can be opened at all.
-  /// Used to tell "device is gone" apart from "device is up but the API is
-  /// broken".
+  /// Opens a TCP socket to [host]:[port], where [host] is an IP literal or a
+  /// domain name. A domain is resolved first and each address is tried until
+  /// one connects (an unreachable IPv6-first result must not hide a reachable
+  /// IPv4 endpoint). Returns null when no address could be reached.
+  Future<Socket?> _openSocket(String host, int port) => connectModuleSocket(
+        host,
+        port,
+        timeout: timeout,
+        debugTag: 'ModuleApiHealthService',
+      );
+
+  /// True when a TCP socket to the module's 5008 API port can be opened at all
+  /// ([host] may be an IP or a domain). Used to tell "device is gone" apart
+  /// from "device is up but the API is broken".
   Future<bool> _socketReachable(DeviceModule module) async {
-    Socket? socket;
+    final socket =
+        await _openSocket(module.ipAddress, module.controlApiPort);
+    if (socket == null) return false;
     try {
-      socket = await Socket.connect(module.ipAddress, module.controlApiPort,
-          timeout: timeout);
       return true;
-    } catch (_) {
-      return false;
     } finally {
       try {
-        socket?.destroy();
+        socket.destroy();
       } catch (_) {
         // Nothing to do: the check is best-effort.
       }

@@ -83,23 +83,23 @@ void main() {
     SharedPreferences.setMockInitialValues({});
   });
 
-  DeviceModule buildModule({required int port, String id = 'm1'}) =>
+  DeviceModule buildModule({required Object host, String id = 'm1'}) =>
       DeviceModule(
         id: id,
         name: 'Relay',
         type: ModuleType.relay,
-        ipAddress: '127.0.0.1',
+        ipAddress: host is int ? '127.0.0.1' : host as String,
         status: ConnectionStatus.offline,
         roomName: 'Cabin',
         internalTempC: 25,
-        tcpPort: port,
+        tcpPort: host is int ? host : 5008,
       );
 
   test('a module is seeded offline and flips online when the 5008 API answers',
       () async {
     final device = await _FakeApiDevice.start();
     final store = ModuleStore.forTesting();
-    final module = buildModule(port: device.port);
+    final module = buildModule(host: device.port);
     await store.replaceAll([module]);
     expect(store.byId('m1')!.status, ConnectionStatus.offline);
 
@@ -116,7 +116,7 @@ void main() {
   test('a dead API socket flags the module offline', () async {
     final store = ModuleStore.forTesting();
     // Port 1 is unreachable: the socket cannot be opened.
-    final module = buildModule(port: 1);
+    final module = buildModule(host: 1);
     await store.replaceAll([module]);
 
     final service = ModuleApiHealthService.forTesting(store: store);
@@ -129,7 +129,7 @@ void main() {
   test('an online module whose 5008 API breaks becomes unknown', () async {
     final device = await _FakeApiDevice.start();
     final store = ModuleStore.forTesting();
-    final module = buildModule(port: device.port);
+    final module = buildModule(host: device.port);
     await store.replaceAll([module]);
 
     final service = ModuleApiHealthService.forTesting(store: store);
@@ -149,7 +149,7 @@ void main() {
       () async {
     final device = await _FakeApiDevice.start();
     final store = ModuleStore.forTesting();
-    final module = buildModule(port: device.port);
+    final module = buildModule(host: device.port);
     await store.replaceAll([module]);
 
     final service = ModuleApiHealthService.forTesting(store: store);
@@ -170,7 +170,7 @@ void main() {
   test('an offline module goes back online as soon as the API answers',
       () async {
     final store = ModuleStore.forTesting();
-    final module = buildModule(port: 1);
+    final module = buildModule(host: 1);
     await store.replaceAll([module]);
 
     final service = ModuleApiHealthService.forTesting(store: store);
@@ -187,7 +187,7 @@ void main() {
   test('an online module that disappears entirely becomes offline', () async {
     final device = await _FakeApiDevice.start();
     final store = ModuleStore.forTesting();
-    final module = buildModule(port: device.port);
+    final module = buildModule(host: device.port);
     await store.replaceAll([module]);
 
     final service = ModuleApiHealthService.forTesting(store: store);
@@ -200,7 +200,7 @@ void main() {
 
   test('a module that never answered never becomes unknown', () async {
     final store = ModuleStore.forTesting();
-    final module = buildModule(port: 1);
+    final module = buildModule(host: 1);
     await store.replaceAll([module]);
 
     final service = ModuleApiHealthService.forTesting(store: store);
@@ -208,12 +208,38 @@ void main() {
     expect(await service.checkOne(module), ConnectionStatus.offline);
   });
 
+  test('a module addressed by domain name connects and reports online',
+      () async {
+    final device = await _FakeApiDevice.start();
+    final store = ModuleStore.forTesting();
+    // "localhost" exercises the DNS path (resolves to ::1 and/or 127.0.0.1,
+    // and every resolved address is tried until one opens).
+    final module = DeviceModule(
+      id: 'remote',
+      name: 'Remote',
+      type: ModuleType.relay,
+      ipAddress: 'localhost',
+      status: ConnectionStatus.offline,
+      roomName: 'Remote',
+      internalTempC: 25,
+      tcpPort: device.port,
+      connectionType: 'remote',
+    );
+    await store.replaceAll([module]);
+
+    final service = ModuleApiHealthService.forTesting(store: store);
+    expect(await service.checkOne(module), ConnectionStatus.online);
+    expect(store.byId('remote')!.lastSeenAt, isNotNull);
+
+    await device.close();
+  });
+
   test('checkAll checks every module concurrently', () async {
     final live = await _FakeApiDevice.start();
     final store = ModuleStore.forTesting();
     await store.replaceAll([
-      buildModule(port: live.port, id: 'live'),
-      buildModule(port: 1, id: 'dead'),
+      buildModule(host: live.port, id: 'live'),
+      buildModule(host: 1, id: 'dead'),
     ]);
 
     final service = ModuleApiHealthService.forTesting(store: store);

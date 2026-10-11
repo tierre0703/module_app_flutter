@@ -19,6 +19,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../core/logger/network_debug_logger.dart';
+import 'module_host_resolver.dart';
 
 class ModuleTcpConnection {
   final String host;
@@ -75,7 +76,19 @@ class ModuleTcpConnection {
     _shouldReconnect = true;
     _connecting = true;
     try {
-      final socket = await Socket.connect(host, port, timeout: _timeout);
+      final socket = await connectModuleSocket(
+        host,
+        port,
+        timeout: _timeout,
+        debugTag: 'ModuleTCP $key',
+      );
+      if (socket == null) {
+        debugPrint('ModuleTCP $key connect failed: no reachable address');
+        _isConnected = false;
+        _stateController.add(false);
+        _scheduleReconnect();
+        return;
+      }
       if (!_shouldReconnect) {
         socket.destroy();
         return;

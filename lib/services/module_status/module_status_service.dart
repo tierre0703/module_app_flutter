@@ -45,6 +45,7 @@ import 'control_api_command_protocol.dart';
 import 'legacy_at_command_protocol.dart';
 import 'module_command_protocol.dart';
 import 'module_command_service.dart';
+import 'module_host_resolver.dart';
 import 'module_protocol_selector.dart';
 import 'module_status_fetcher.dart';
 import 'module_tcp_service.dart';
@@ -945,8 +946,13 @@ class ModuleStatusService {
     Socket? socket;
     var reachable = false;
     try {
-      socket = await Socket.connect(module.ipAddress, module.tcpPort,
-          timeout: timeout);
+      socket = await connectModuleSocket(
+        module.ipAddress,
+        module.tcpPort,
+        timeout: timeout,
+        debugTag: 'ModuleStatusService',
+      );
+      if (socket == null) return false;
       socket.setOption(SocketOption.tcpNoDelay, true);
       NetworkDebugLogger.outbound(
           'tcp', '${module.ipAddress}:${module.tcpPort}', 'AT\r');
@@ -1002,8 +1008,13 @@ class ModuleStatusService {
     var reachable = false;
     final splitter = SoleuxLineSplitter();
     try {
-      socket = await Socket.connect(module.ipAddress, module.controlApiPort,
-          timeout: timeout);
+      socket = await connectModuleSocket(
+        module.ipAddress,
+        module.controlApiPort,
+        timeout: timeout,
+        debugTag: 'ModuleStatusService',
+      );
+      if (socket == null) return false;
       socket.setOption(SocketOption.tcpNoDelay, true);
       const request =
           SoleuxJsonRequest(id: 1, action: SoleuxControlApiActions.ping);
@@ -1504,6 +1515,10 @@ class ModuleStatusService {
   /// reachability probe. When an existing unit targets a different endpoint
   /// (or the module changed IP / the transport setting changed), the old unit
   /// is disposed and replaced.
+  ///
+  /// In remote mode a module may be addressed by a domain name: when that name
+  /// does not resolve (offline DNS, VPN not up), the HTTP unit falls back to
+  /// the module's last known IP address so control can still be attempted.
   SoleuxHttpService _ensureHttpUnit(
       DeviceModule module, CommandTransportMode mode) {
     final baseUri = controlApiHttpEndpoint(module, mode);
@@ -1515,7 +1530,27 @@ class ModuleStatusService {
 
     final unit = SoleuxHttpService(baseUri: baseUri, timeout: timeout);
     _jsonUnits[module.id] = unit;
+    _warnIfUnresolvable(module);
     return unit;
+  }
+
+  /// Logs a warning when a module configured by domain name cannot be resolved
+  /// and is not a literal IP, so a misconfigured/offline DNS is visible in the
+  /// debug log instead of silently timing out on every request.
+  Future<void> _warnIfUnresolvable(DeviceModule module) async {
+    final host = module.ipAddress;
+    if (InternetAddress.tryParse(host) != null) return;
+    try {
+      final addresses = await InternetAddress.lookup(host);
+      if (addresses.isEmpty) {
+        debugPrint('ModuleStatusService: "${module.ipAddress}" resolved to no '
+            'addresses; module ${module.name} (${module.id}) is unreachable '
+            'until DNS recovers');
+      }
+    } catch (e) {
+      debugPrint('ModuleStatusService: DNS lookup for "${module.ipAddress}" '
+          '(module ${module.name}) failed: $e');
+    }
   }
 
   /// Wires the shared TCP unit streams (live state pushes + connectivity).
