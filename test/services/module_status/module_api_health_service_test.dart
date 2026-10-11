@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soleux_device_manager/models/models.dart';
 import 'package:soleux_device_manager/services/module_store.dart';
 import 'package:soleux_device_manager/services/module_status/module_api_health_service.dart';
+import 'package:soleux_device_manager/services/module_status/module_host_resolver.dart';
 
 /// Fake Control API device: answers the JSON `hello` while [answering] is true,
 /// and keeps the connection open when [socketAccepts] is true (simulating a
@@ -208,12 +209,11 @@ void main() {
     expect(await service.checkOne(module), ConnectionStatus.offline);
   });
 
-  test('a module addressed by domain name connects and reports online',
-      () async {
+  test('a module addressed by hostname connects and reports online', () async {
     final device = await _FakeApiDevice.start();
     final store = ModuleStore.forTesting();
-    // "localhost" exercises the DNS path (resolves to ::1 and/or 127.0.0.1,
-    // and every resolved address is tried until one opens).
+    // "localhost" exercises the hostname path (resolved IPv4-first, then each
+    // address is tried until one opens).
     final module = DeviceModule(
       id: 'remote',
       name: 'Remote',
@@ -232,6 +232,21 @@ void main() {
     expect(store.byId('remote')!.lastSeenAt, isNotNull);
 
     await device.close();
+  });
+
+  test('resolveModuleAddresses prefers IPv4 and passes IP literals through',
+      () async {
+    final addresses = await resolveModuleAddresses('localhost');
+    expect(addresses, isNotEmpty);
+    expect(addresses.first.type, InternetAddressType.IPv4,
+        reason: 'module endpoints are IPv4-only, so A records must be tried '
+            'before AAAA records');
+
+    final literal = await resolveModuleAddresses('192.168.1.50');
+    expect(literal.single.address, '192.168.1.50');
+
+    final unknown = await resolveModuleAddresses('no-such-host.invalid');
+    expect(unknown, isEmpty);
   });
 
   test('checkAll checks every module concurrently', () async {

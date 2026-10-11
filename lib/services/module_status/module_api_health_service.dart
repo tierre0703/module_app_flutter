@@ -284,9 +284,9 @@ class ModuleApiHealthService {
   }
 
   /// Opens a TCP socket to [host]:[port], where [host] is an IP literal or a
-  /// domain name. A domain is resolved first and each address is tried until
-  /// one connects (an unreachable IPv6-first result must not hide a reachable
-  /// IPv4 endpoint). Returns null when no address could be reached.
+  /// hostname (remote mode). A hostname is resolved IPv4-first and each address
+  /// is tried until one connects. Returns null when no address could be
+  /// reached.
   Future<Socket?> _openSocket(String host, int port) => connectModuleSocket(
         host,
         port,

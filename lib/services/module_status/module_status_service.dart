@@ -1534,22 +1534,19 @@ class ModuleStatusService {
     return unit;
   }
 
-  /// Logs a warning when a module configured by domain name cannot be resolved
-  /// and is not a literal IP, so a misconfigured/offline DNS is visible in the
-  /// debug log instead of silently timing out on every request.
+  /// Logs a warning when a module configured by hostname cannot be resolved
+  /// (and is not a literal IP), so a misconfigured/offline DNS is visible in the
+  /// debug log instead of silently timing out on every request. Hostnames are
+  /// expected to resolve to IPv4.
   Future<void> _warnIfUnresolvable(DeviceModule module) async {
     final host = module.ipAddress;
     if (InternetAddress.tryParse(host) != null) return;
-    try {
-      final addresses = await InternetAddress.lookup(host);
-      if (addresses.isEmpty) {
-        debugPrint('ModuleStatusService: "${module.ipAddress}" resolved to no '
-            'addresses; module ${module.name} (${module.id}) is unreachable '
-            'until DNS recovers');
-      }
-    } catch (e) {
-      debugPrint('ModuleStatusService: DNS lookup for "${module.ipAddress}" '
-          '(module ${module.name}) failed: $e');
+    final addresses =
+        await resolveModuleAddresses(host, debugTag: 'ModuleStatusService');
+    if (addresses.isEmpty) {
+      debugPrint('ModuleStatusService: "${module.ipAddress}" (module '
+          '${module.name}) does not resolve; it is unreachable until DNS '
+          'recovers');
     }
   }
 
