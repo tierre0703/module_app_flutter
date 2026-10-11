@@ -7,7 +7,13 @@
 // identified / added manually by IP address. Selecting or
 // submitting a module simply returns it to the Configuration screen via
 // `Navigator.pop`.
+//
+// The discovered list supports batch addition: a long press enters selection
+// mode (cards become checkable), the "Add selected" action stays disabled
+// until at least one module is selected, and submitting pops every checked
+// module as a `List<DeviceModule>`.
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
 import '../core/discovery/module_discovery.dart';
@@ -27,6 +33,11 @@ class AddModuleScreen extends StatefulWidget {
 class _AddModuleScreenState extends State<AddModuleScreen> {
   bool _scanning = true;
   late List<DeviceModule> _discovered;
+
+  /// Ids of the discovered modules checked while selection mode is active.
+  /// Non-empty implies selection mode; long press starts it, and the
+  /// "Add selected" action is only enabled while it holds at least one id.
+  final Set<String> _selected = <String>{};
 
   final ModuleDiscovery _discovery = ModuleDiscovery();
 
@@ -92,6 +103,8 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
     setState(() {
       _scanning = true;
       _discovered = [];
+      // A rescan replaces the list, so any previous selection is stale.
+      _selected.clear();
     });
     List<DeviceModule> found;
     try {
@@ -189,7 +202,46 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
 
   void _addDiscovered(DeviceModule module) {
     FocusScope.of(context).unfocus();
-    Navigator.of(context).pop(module);
+    Navigator.of(context).pop(<DeviceModule>[module]);
+  }
+
+  /// True while the list accepts checkbox taps (selection mode). Selection
+  /// mode is entered by a long press and only stays on while at least one
+  /// module is checked.
+  bool get _selectionMode => _selected.isNotEmpty;
+
+  void _toggleSelection(DeviceModule module) {
+    setState(() {
+      if (!_selected.remove(module.id)) {
+        _selected.add(module.id);
+      }
+    });
+  }
+
+  /// Long press: enter selection mode straight away and check [module], so the
+  /// user immediately sees the selectable list and the enabled batch action.
+  void _startSelection(DeviceModule module) {
+    if (!_selectionMode) {
+      HapticFeedback.mediumImpact();
+    }
+    setState(() => _selected.add(module.id));
+  }
+
+  void _clearSelection() {
+    setState(_selected.clear);
+  }
+
+  /// Returns every checked discovered module to the Configuration screen for
+  /// batch upsert. Only reachable while [_selectionMode] holds modules.
+  void _addSelected() {
+    if (!_selectionMode) return;
+    FocusScope.of(context).unfocus();
+    final List<DeviceModule> picked = [
+      for (final module in _discovered)
+        if (_selected.contains(module.id)) module,
+    ];
+    if (picked.isEmpty) return;
+    Navigator.of(context).pop(picked);
   }
 
   void _addManual() {
@@ -218,7 +270,69 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
       tempMaxC: _temperatureThreshold(),
       channels: _defaultChannelsFor(_manualType, AppLocalizations.of(context)),
     );
-    Navigator.of(context).pop(module);
+    Navigator.of(context).pop(<DeviceModule>[module]);
+  }
+
+  /// Card for one discovered module. Idle it offers a single "Add" button;
+  /// while selection mode is on the same card becomes a checkbox row, so the
+  /// user can build up a batch of modules to add at once.
+  Widget _buildDiscoveredCard(
+      DeviceModule module, AppLocalizations l10n, Color onSurface) {
+    final bool selected = _selected.contains(module.id);
+    final Widget icon = IconAvatar(icon: module.type.icon);
+    final Widget details = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(module.name,
+            style: const TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 2),
+        Text(
+            (module.firmware != null && module.firmware!.isNotEmpty)
+                ? l10n.addModuleFamilyMeta(module.type.label, module.firmware!)
+                : l10n.configModuleSummary(
+                    module.type.label, module.ipAddress),
+            style: TextStyle(
+                fontSize: 12, color: onSurface.withValues(alpha: 0.55))),
+        const SizedBox(height: 2),
+        Text(
+          module.ipAddress,
+          style: TextStyle(
+              fontSize: 11, color: onSurface.withValues(alpha: 0.45)),
+        ),
+      ],
+    );
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.betweenCards),
+      child: Card(
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onLongPress: () => _startSelection(module),
+          onTap: _selectionMode ? () => _toggleSelection(module) : null,
+          child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                if (_selectionMode) ...[
+                  Checkbox(
+                    value: selected,
+                    onChanged: (_) => _toggleSelection(module),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+                icon,
+                const SizedBox(width: 12),
+                Expanded(child: details),
+                if (!_selectionMode)
+                  FilledButton(
+                      onPressed: () => _addDiscovered(module),
+                      child: Text(l10n.addModuleButton)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -234,14 +348,57 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
           children: [
             SectionHeader(
               l10n.addModuleDiscovered,
-              trailing: IconButton(
-                tooltip: l10n.addModuleRefreshTooltip,
-                onPressed: _scanning ? null : _refreshDiscovery,
-                icon: Icon(
-                  _scanning ? Icons.sync : Icons.refresh,
+              // Batch actions live in the header while selecting: "add" is
+              // only shown (and only enabled) in selection mode, so the user
+              // must pick modules before adding them all at once; the clear
+              // icon leaves selection mode.
+              trailing: _selectionMode
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: l10n.addModuleAddSelectedCount(
+                              _selected.length),
+                          onPressed: _addSelected,
+                          icon: const Icon(Icons.add_circle_outline),
+                        ),
+                        IconButton(
+                          tooltip: l10n.addModuleDeselectAll,
+                          onPressed: _clearSelection,
+                          icon: const Icon(Icons.clear_all),
+                        ),
+                      ],
+                    )
+                  : IconButton(
+                      tooltip: l10n.addModuleRefreshTooltip,
+                      onPressed: _scanning ? null : _refreshDiscovery,
+                      icon: Icon(
+                        _scanning ? Icons.sync : Icons.refresh,
+                      ),
+                    ),
+            ),
+            if (_selectionMode)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  l10n.addModuleSelectedCount(_selected.length),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              )
+            else if (!_scanning && _discovered.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Text(
+                  l10n.addModuleSelectHint,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
               ),
-            ),
             if (_scanning)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 24),
@@ -280,54 +437,7 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
               )
             else
               for (final module in _discovered)
-                Padding(
-                  padding:
-                      const EdgeInsets.only(bottom: AppSpacing.betweenCards),
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          IconAvatar(icon: module.type.icon),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(module.name,
-                                    style: const TextStyle(
-                                        fontWeight: FontWeight.w700)),
-                                const SizedBox(height: 2),
-                                Text(
-                                    (module.firmware != null &&
-                                            module.firmware!.isNotEmpty)
-                                        ? l10n.addModuleFamilyMeta(
-                                            module.type.label, module.firmware!)
-                                        : l10n.configModuleSummary(
-                                            module.type.label,
-                                            module.ipAddress),
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        color:
-                                            onSurface.withValues(alpha: 0.55))),
-                                const SizedBox(height: 2),
-                                Text(
-                                  module.ipAddress,
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: onSurface.withValues(alpha: 0.45)),
-                                ),
-                              ],
-                            ),
-                          ),
-                          FilledButton(
-                              onPressed: () => _addDiscovered(module),
-                              child: Text(l10n.addModuleButton)),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
+                _buildDiscoveredCard(module, l10n, onSurface),
             const SizedBox(height: 24),
             SectionHeader(l10n.addModuleManualSection),
             TextField(

@@ -49,16 +49,26 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   }
 
   Future<void> _addModule() async {
-    final DeviceModule? added = await Navigator.of(context).push<DeviceModule>(
+    final List<DeviceModule>? added = await Navigator.of(context)
+        .push<List<DeviceModule>>(
       MaterialPageRoute(builder: (_) => const AddModuleScreen()),
     );
-    if (added != null) {
-      await _store.upsert(added);
+    if (added == null || added.isEmpty) return;
+    for (final module in added) {
+      await _store.upsert(module);
       // Probe the new module now so its real status is reflected in the list
       // and on the Home screen immediately. Every addition starts unverified
       // (offline) until the probe/heartbeat confirms it reachable.
-      await ModuleStatusService.shared.refreshOne(added);
+      await ModuleStatusService.shared.refreshOne(module);
     }
+    if (!mounted || added.length < 2) return;
+    // Confirm the batch addition when several modules were added at once.
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+            AppLocalizations.of(context).addModuleAddedCount(added.length)),
+      ),
+    );
   }
 
   Future<void> _renameModule(DeviceModule module) async {
