@@ -289,7 +289,17 @@
   "tempThresholdLabel": "Temperature threshold (\u00b0C)",
   "addModuleFamilyMeta": "{family} \u00b7 FW {version}",
   "@addModuleFamilyMeta": {"placeholders": {"family": {"type": "String"}, "version": {"type": "String"}}},
-  "addModuleDcpHint": "No network devices. To commission a device without an IP address, use the Windows Soleux tool (DCP) to assign a static IPv4 address."
+  "addModuleDcpHint": "No network devices. To commission a device without an IP address, use the Windows Soleux tool (DCP) to assign a static IPv4 address.",
+  "addModuleSelectHint": "Long press a module to select several and add them in batch.",
+  "addModuleAddSelected": "Add selected",
+  "addModuleAddSelectedCount": "Add selected ({count})",
+  "@addModuleAddSelectedCount": {"placeholders": {"count": {"type": "int"}}},
+  "addModuleSelectedCount": "{count} selected",
+  "@addModuleSelectedCount": {"placeholders": {"count": {"type": "int"}}},
+  "addModuleDeselectAll": "Clear selection",
+  "addModuleSelected": "Select",
+  "addModuleAddedCount": "Added {count} module(s).",
+  "@addModuleAddedCount": {"placeholders": {"count": {"type": "int"}}}
 
   ,"roomsTitle": "Rooms",
   "roomsNew": "New room",
