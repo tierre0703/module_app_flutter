@@ -340,26 +340,7 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      // Batch action: only enabled while selection mode is on (i.e. at least
-      // one discovered module is checked). Idle it stays disabled, so the
-      // user must select the modules they want before adding them at once.
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-              AppSpacing.outerPadding,
-              8,
-              AppSpacing.outerPadding,
-              AppSpacing.outerPadding),
-          child: FilledButton.icon(
-            onPressed: _selectionMode ? _addSelected : null,
-            icon: const Icon(Icons.playlist_add_check),
-            label: Text(_selectionMode
-                ? l10n.addModuleAddSelectedCount(_selected.length)
-                : l10n.addModuleAddSelected),
-          ),
-        ),
-      ),
+      appBar: AppBar(title: Text(l10n.addModuleTitle)),
       body: SafeArea(
         top: false,
         child: ListView(
@@ -367,10 +348,26 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
           children: [
             SectionHeader(
               l10n.addModuleDiscovered,
+              // Batch actions live in the header while selecting: "add" is
+              // only shown (and only enabled) in selection mode, so the user
+              // must pick modules before adding them all at once; the clear
+              // icon leaves selection mode.
               trailing: _selectionMode
-                  ? TextButton(
-                      onPressed: _clearSelection,
-                      child: Text(l10n.addModuleDeselectAll),
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: l10n.addModuleAddSelectedCount(
+                              _selected.length),
+                          onPressed: _addSelected,
+                          icon: const Icon(Icons.add),
+                        ),
+                        IconButton(
+                          tooltip: l10n.addModuleDeselectAll,
+                          onPressed: _clearSelection,
+                          icon: const Icon(Icons.close),
+                        ),
+                      ],
                     )
                   : IconButton(
                       tooltip: l10n.addModuleRefreshTooltip,
