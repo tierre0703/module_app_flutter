@@ -217,7 +217,7 @@ class _ModuleCard extends StatelessWidget {
                         Text(
                           switch (status) {
                             ConnectionStatus.online => l10n.online,
-                            ConnectionStatus.suspect => l10n.suspect,
+                            ConnectionStatus.unknown => l10n.unknown,
                             ConnectionStatus.offline => l10n.offline,
                           },
                           style: TextStyle(
@@ -225,7 +225,7 @@ class _ModuleCard extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             color: switch (status) {
                               ConnectionStatus.online => AppColors.online,
-                              ConnectionStatus.suspect => AppColors.suspect,
+                              ConnectionStatus.unknown => AppColors.unknown,
                               ConnectionStatus.offline =>
                                 AppColors.offlineAlert,
                             },

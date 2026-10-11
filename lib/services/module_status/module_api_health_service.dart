@@ -1,0 +1,332 @@
+// lib/services/module_status/module_api_health_service.dart
+//
+// Single source of truth for a module's online / unknown / offline status.
+//
+// Reachability is decided *only* by the module's 5008 Control API port
+// ([DeviceModule.controlApiPort]); the legacy UDP heartbeat port (5007) no
+// longer participates in the online/offline decision.
+//
+// Status model (mirrors the brief for the new check):
+//   - a module is seeded [ConnectionStatus.offline] and stays offline until the
+//     5008 API answers for the first time;
+//   - while the 5008 API answers (a `hello` round-trip succeeds) the module is
+//     [ConnectionStatus.online] and `lastSeenAt` is refreshed;
+//   - when the 5008 API stops answering (the socket is dead / nothing answers
+//     within the timeout) a module that was online *and is still reachable on
+//     the network* becomes [ConnectionStatus.unknown] - "was online, API is
+//     broken";
+//   - when the module is not reachable at all (the TCP socket cannot be opened)
+//     it is [ConnectionStatus.offline]. A module that was never online therefore
+//     goes straight to offline, never through unknown.
+//
+// The service shares the persistent Control API socket owned by
+// [ModuleStatusService] (so a broken API session is also what the probe sees)
+// and only opens a throw-away socket to tell "device gone" apart from "device
+// up, API broken" when the shared unit is no longer connected.
+//
+// Each module is checked independently and concurrently on a periodic cadence,
+// so a slow or unreachable module never delays the rest of the fleet.
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
+import '../../core/soleux/soleux_json_protocol.dart';
+import '../../models/models.dart';
+import '../module_store.dart';
+import 'module_status_service.dart';
+import 'soleux_control_api_service.dart';
+
+/// Periodic 5008-API reachability monitor that owns [ConnectionStatus].
+class ModuleApiHealthService {
+  static ModuleApiHealthService? _shared;
+  static ModuleApiHealthService get shared => _shared ??=
+      ModuleApiHealthService(
+          store: ModuleStore.shared, statusService: () => ModuleStatusService.shared);
+
+  /// Creates an isolated service for tests.
+  @visibleForTesting
+  static ModuleApiHealthService forTesting({
+    required ModuleStore store,
+    ModuleStatusService? statusService,
+  }) =>
+      ModuleApiHealthService(
+        store: store,
+        statusService: statusService == null ? null : () => statusService,
+      );
+
+  final ModuleStore store;
+
+  /// Resolves the owning status service (which holds the persistent Control API
+  /// sockets). Null keeps the service socket-only, used by tests.
+  final ModuleStatusService? Function()? _statusService;
+
+  /// How often every module's 5008 API is re-checked.
+  final Duration interval;
+
+  /// How long a single API check (socket connect + `hello`) may take.
+  final Duration timeout;
+
+  bool _running = false;
+  Timer? _timer;
+  Timer? _commitDebounce;
+  bool _checking = false;
+
+  ModuleApiHealthService({
+    required this.store,
+    ModuleStatusService? Function()? statusService,
+    this.interval = defaultInterval,
+    this.timeout = defaultTimeout,
+  }) : _statusService = statusService;
+
+  /// Production cadence for the 5008 API check.
+  static const Duration defaultInterval = Duration(seconds: 15);
+
+  /// Per-module timeout for one API check: a socket that is dead (connection
+  /// refused / no route) fails immediately, while a half-open socket is caught
+  /// by this window.
+  static const Duration defaultTimeout = Duration(seconds: 3);
+
+  /// Per-module timeout for the `hello` round-trip that confirms the API works.
+  static const Duration _helloTimeout = Duration(seconds: 2);
+
+  bool get running => _running;
+
+  /// Starts the periodic API check. Idempotent. The first pass runs
+  /// immediately so a freshly launched app converges on real status quickly.
+  Future<void> start() async {
+    if (_running) return;
+    _running = true;
+    store.addListener(_onStoreChanged);
+    unawaited(checkAll());
+    _timer = Timer.periodic(interval, (_) => unawaited(checkAll()));
+  }
+
+  /// Stops the periodic check (used when the app backgrounds, where the native
+  /// background worker takes over). Idempotent.
+  void stop() {
+    if (!_running) return;
+    _running = false;
+    _timer?.cancel();
+    _timer = null;
+    _commitDebounce?.cancel();
+    _commitDebounce = null;
+    store.removeListener(_onStoreChanged);
+  }
+
+  /// Runs one immediate pass without toggling the lifecycle state (used after
+  /// a network change).
+  Future<void> refreshNow() => checkAll();
+
+  void _onStoreChanged() {
+    if (!_running || _checking) return;
+    // A module was just added / re-addressed; its status is seeded offline by
+    // the caller, so an immediate pass is enough here.
+    unawaited(_initialiseNewModules());
+  }
+
+  /// Seeds every module that has no status baseline yet to offline, so a
+  /// module that has never answered the 5008 API never shows as online.
+  Future<void> _initialiseNewModules() async {
+    await store.init();
+    var changed = false;
+    for (final module in store.modules) {
+      if (_seen.contains(module.id)) continue;
+      _seen.add(module.id);
+      if (module.status != ConnectionStatus.offline) {
+        module.status = ConnectionStatus.offline;
+        changed = true;
+      }
+    }
+    if (changed) await store.commit();
+  }
+
+  /// Ids the service has already produced a verdict for in this process.
+  final Set<String> _seen = <String>{};
+
+  /// Checks every module's 5008 API concurrently and commits once.
+  Future<void> checkAll() async {
+    if (_checking) return;
+    _checking = true;
+    try {
+      await store.init();
+      await _initialiseNewModules();
+      final modules = store.modules;
+      await Future.wait(modules.map(checkOne));
+      await store.commit();
+    } catch (e, st) {
+      debugPrint('ModuleApiHealthService: check pass failed: $e\n$st');
+    } finally {
+      _checking = false;
+    }
+  }
+
+  /// Checks one module's 5008 API and updates its [ConnectionStatus].
+  ///
+  /// Returns the module's status after the check.
+  Future<ConnectionStatus> checkOne(DeviceModule module) async {
+    final live = store.byId(module.id) ?? module;
+    final previous = live.status;
+
+    final bool apiAlive = await _apiAnswers(live);
+
+    final ConnectionStatus next;
+    if (apiAlive) {
+      next = ConnectionStatus.online;
+      live.lastSeenAt = DateTime.now();
+    } else if (previous == ConnectionStatus.online ||
+        previous == ConnectionStatus.unknown) {
+      // The module was already reachable. Distinguish "device gone" (socket
+      // dead -> offline) from "device up, API broken" (socket opens but the
+      // API does not answer -> unknown).
+      next = await _socketReachable(live)
+          ? ConnectionStatus.unknown
+          : ConnectionStatus.offline;
+    } else {
+      // Never seen online: it can only be offline, never unknown.
+      next = ConnectionStatus.offline;
+    }
+
+    if (live.status != next) {
+      live.status = next;
+      _scheduleCommit();
+      debugPrint('ModuleApiHealthService: ${live.name} (${live.id}) '
+          '${previous.name} -> ${next.name}');
+    }
+    return next;
+  }
+
+  /// True when the module's 5008 Control API answers a `hello`.
+  ///
+  /// Prefers the persistent unit already owned by [ModuleStatusService] (so a
+  /// broken session is detected exactly where the probe sees it). When there is
+  /// no live unit, a throw-away socket performs the same hello round-trip.
+  Future<bool> _apiAnswers(DeviceModule module) async {
+    final unit = _statusService?.call()?.jsonCommandServiceFor(module.id);
+    if (unit != null && unit.isConnected) {
+      return _helloOk(unit);
+    }
+    return _transientHello(module);
+  }
+
+  Future<bool> _helloOk(SoleuxControlApiService unit) async {
+    try {
+      final hello = await unit.hello(timeout: _helloTimeout);
+      return hello.ok;
+    } catch (e, st) {
+      debugPrint('ModuleApiHealthService: API hello failed: $e\n$st');
+      return false;
+    }
+  }
+
+  /// Opens a short-lived Control API socket and sends `hello`. A dead socket
+  /// (refused / unreachable) reports the module as not answering.
+  Future<bool> _transientHello(DeviceModule module) async {
+    Socket? socket;
+    final port = module.controlApiPort;
+    try {
+      socket = await Socket.connect(module.ipAddress, port, timeout: timeout);
+      socket.setOption(SocketOption.tcpNoDelay, true);
+      final id = DateTime.now().microsecondsSinceEpoch & 0x7fffffff;
+      socket.write(SoleuxJsonRequest(
+        id: id,
+        action: SoleuxControlApiActions.hello,
+        protocol: SoleuxProtocolVersion.defaultRequest,
+      ).encode());
+
+      final hello = await _firstJsonResponse(socket, id);
+      return hello?.ok ?? false;
+    } catch (e) {
+      debugPrint('ModuleApiHealthService: API socket ${module.ipAddress}:'
+          '$port not reachable: $e');
+      return false;
+    } finally {
+      try {
+        socket?.destroy();
+      } catch (e, st) {
+        debugPrint('ModuleApiHealthService: socket destroy failed: $e\n$st');
+      }
+    }
+  }
+
+  /// True when a TCP socket to the module's 5008 API port can be opened at all.
+  /// Used to tell "device is gone" apart from "device is up but the API is
+  /// broken".
+  Future<bool> _socketReachable(DeviceModule module) async {
+    Socket? socket;
+    try {
+      socket = await Socket.connect(module.ipAddress, module.controlApiPort,
+          timeout: timeout);
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      try {
+        socket?.destroy();
+      } catch (_) {
+        // Nothing to do: the check is best-effort.
+      }
+    }
+  }
+
+  /// Waits for the JSON response with [id]. The line splitter tolerates a
+  /// response split across TCP chunks; a partial frame simply times out.
+  Future<SoleuxJsonResponseLike?> _firstJsonResponse(
+      Socket socket, int id) async {
+    final completer = Completer<SoleuxJsonResponseLike?>();
+    late StreamSubscription<String> subscription;
+    final timer = Timer(_helloTimeout, () {
+      if (!completer.isCompleted) completer.complete(null);
+    });
+
+    subscription = socket
+        .cast<List<int>>()
+        .transform<String>(utf8.decoder)
+        .transform<String>(const LineSplitter())
+        .listen(
+      (line) {
+        final decoded = _decodeResponse(line, id);
+        if (decoded != null && !completer.isCompleted) {
+          completer.complete(decoded);
+        }
+      },
+      onDone: () {
+        if (!completer.isCompleted) completer.complete(null);
+      },
+      onError: (Object _) {
+        if (!completer.isCompleted) completer.complete(null);
+      },
+      cancelOnError: false,
+    );
+
+    try {
+      return await completer.future;
+    } finally {
+      timer.cancel();
+      await subscription.cancel();
+    }
+  }
+
+  /// Decodes one wire line into the minimal response shape, or null when it is
+  /// not a JSON response / does not match [id].
+  SoleuxJsonResponseLike? _decodeResponse(String line, int id) {
+    final response = SoleuxJsonResponse.maybeParse(line);
+    if (response == null || response.id != id) return null;
+    return SoleuxJsonResponseLike(id: response.id, ok: response.ok);
+  }
+
+  void _scheduleCommit() {
+    _commitDebounce?.cancel();
+    _commitDebounce =
+        Timer(const Duration(milliseconds: 200), () => store.commit().ignore());
+  }
+}
+
+/// Minimal decoded `hello`/response shape used by the health check.
+class SoleuxJsonResponseLike {
+  final int id;
+  final bool ok;
+
+  const SoleuxJsonResponseLike({required this.id, required this.ok});
+}

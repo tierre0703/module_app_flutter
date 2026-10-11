@@ -57,9 +57,15 @@ extension ModuleTypeX on ModuleType {
 }
 
 /// Connection / availability indicator shown throughout the app: green
-/// (online), amber (suspect - heartbeat failing but not yet offline) or red
-/// (offline).
-enum ConnectionStatus { online, suspect, offline }
+/// (online - the 5008 Control API socket is live), grey/amber (unknown - the
+/// module was online, but its 5008 API is currently broken / not answering) or
+/// red (offline - the 5008 API socket is dead, or the module was never
+/// reachable).
+///
+/// Reachability is derived solely from the module's 5008 Control API port
+/// (see [DeviceModule.controlApiPort]); the UDP heartbeat port (5007) is no
+/// longer used for online/offline decisions.
+enum ConnectionStatus { online, unknown, offline }
 
 /// Input field behaviour - the Control API `set_input_configuration` `mode`
 /// (momentary | maintained | pulse), see
@@ -601,7 +607,7 @@ class DeviceModule {
         type: ModuleType.values.byName(json['type'] as String),
         ipAddress: json['ipAddress'] as String,
         tcpPort: DeviceModule._migratedTcpPort(json['tcpPort']),
-        status: ConnectionStatus.values.byName(json['status'] as String),
+        status: _connectionStatusFromJson(json['status']),
         roomName: json['roomName'] as String? ?? 'Unassigned',
         internalTempC: (json['internalTempC'] as num?)?.toDouble() ?? 0,
         tempMinC: (json['tempMinC'] as num?)?.toDouble() ?? 0,
@@ -640,6 +646,18 @@ class DeviceModule {
     final stored = (raw as num?)?.toInt();
     if (stored == null || stored == 5005) return 5008;
     return stored;
+  }
+
+  /// Resolves a persisted status name. Retired values (the pre-5008-API
+  /// `suspect` status) and unknown values degrade to [ConnectionStatus.unknown]
+  /// instead of throwing, so an old persisted fleet still loads.
+  static ConnectionStatus _connectionStatusFromJson(Object? raw) {
+    final name = raw as String?;
+    if (name == null) return ConnectionStatus.offline;
+    for (final status in ConnectionStatus.values) {
+      if (status.name == name) return status;
+    }
+    return ConnectionStatus.unknown;
   }
 }
 

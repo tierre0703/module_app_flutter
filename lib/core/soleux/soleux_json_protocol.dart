@@ -112,6 +112,7 @@ abstract final class SoleuxControlApiActions {
   SoleuxControlApiActions._();
 
   // Session and protocol (§1).
+  static const String hello = 'hello';
   static const String ping = 'ping';
   static const String authenticate = 'authenticate';
   static const String getCapabilities = 'get_capabilities';

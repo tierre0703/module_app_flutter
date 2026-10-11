@@ -903,31 +903,39 @@ class ModuleStatusService {
   /// `ping` POSTed to /api/v1/command.
   Future<bool> _pollConnectivity(DeviceModule module) async {
     final live = store.byId(module.id) ?? module;
+    final bool reachable;
     if (_fetchers.forType(module.type) == null) {
-      return false;
-    }
-    final mode = _commandTransport();
+      reachable = false;
+    } else {
+      final mode = _commandTransport();
 
-    // Firmware-pinned protocol: ping exactly the transport the firmware speaks.
-    final decision = _protocolSelector.decide(live);
-    if (decision.pinned) {
-      return decision.kind == ModuleCommandProtocolKind.controlApi
-          ? (mode == CommandTransportMode.tcp
-              ? await _pollJsonPing(live)
-              : await _pollHttpPing(live, mode))
-          : await _pollAtPing(live);
+      // Firmware-pinned protocol: ping exactly the transport the firmware
+      // speaks.
+      final decision = _protocolSelector.decide(live);
+      if (decision.pinned) {
+        reachable = decision.kind == ModuleCommandProtocolKind.controlApi
+            ? (mode == CommandTransportMode.tcp
+                ? await _pollJsonPing(live)
+                : await _pollHttpPing(live, mode))
+            : await _pollAtPing(live);
+      } else {
+        // Unknown firmware: Control API devices (discovery advertised the
+        // Control API endpoint) are pinged over the JSON envelope on the
+        // configured transport (TCP Control API port, or HTTP/HTTPS
+        // /api/v1/command). Everything else - AT-only and legacy `J:` devices -
+        // still answers the legacy `AT\r` ping on the legacy TCP port during
+        // migration.
+        reachable = live.isControlApiAdvertised
+            ? (mode == CommandTransportMode.tcp
+                ? await _pollJsonPing(live)
+                : await _pollHttpPing(live, mode))
+            : await _pollAtPing(live);
+      }
     }
-
-    // Unknown firmware: Control API devices (discovery advertised the Control
-    // API endpoint) are pinged over the JSON envelope on the configured
-    // transport (TCP Control API port, or HTTP/HTTPS /api/v1/command).
-    // Everything else - AT-only and legacy `J:` devices - still answers the
-    // legacy `AT\r` ping on the legacy TCP port during migration.
-    return live.isControlApiAdvertised
-        ? (mode == CommandTransportMode.tcp
-            ? await _pollJsonPing(live)
-            : await _pollHttpPing(live, mode))
-        : await _pollAtPing(live);
+    // This poll is the reachability evidence for the pass: write the same
+    // 5008-API-derived status the refresh path writes.
+    _applyReachability(live, alive: reachable);
+    return reachable;
   }
 
   /// One-shot legacy `AT\r` ping on the legacy TCP port. Opens a temporary
@@ -1071,6 +1079,7 @@ class ModuleStatusService {
     if (fetcher == null) {
       // Unsupported module type - no status probe exists, so it cannot be
       // confirmed reachable.
+      _applyReachability(live, alive: false);
       return false;
     }
 
@@ -1079,9 +1088,11 @@ class ModuleStatusService {
     // probing. Unknown firmware falls through to the probe below.
     final decision = _protocolSelector.decide(live);
     if (decision.pinned) {
-      return decision.kind == ModuleCommandProtocolKind.controlApi
-          ? _refreshControlApi(live)
-          : _refreshLegacyAt(live, fetcher);
+      final alive = decision.kind == ModuleCommandProtocolKind.controlApi
+          ? await _refreshControlApi(live)
+          : await _refreshLegacyAt(live, fetcher);
+      _applyReachability(live, alive: alive);
+      return alive;
     }
 
     // Soleux JSON path first for unknown-firmware modules (the recommended
@@ -1099,15 +1110,19 @@ class ModuleStatusService {
         // A Control API device must not keep a duplicate legacy AT+ unit (and
         // its second socket) around.
         _units.remove(live.id)?.dispose();
+        _applyReachability(live, alive: true);
         return true;
       }
       if (httpOk == false) {
         // The endpoint answered but rejected the Control API hello - not a
         // current Soleux HTTP Control API device; the AT path is not closed.
+        _applyReachability(live, alive: false);
         return false;
       }
       // Unreachable / no hello in time - a legacy device; fall back to AT+.
-      return _refreshLegacyAt(live, fetcher);
+      final alive = await _refreshLegacyAt(live, fetcher);
+      _applyReachability(live, alive: alive);
+      return alive;
     }
 
     final jsonOk = await _probeSoleuxJson(live);
@@ -1115,17 +1130,45 @@ class ModuleStatusService {
       // A JSON-capable device must not keep a duplicate legacy AT+ unit (and
       // its second socket) around.
       _units.remove(live.id)?.dispose();
+      _applyReachability(live, alive: true);
       return true;
     }
     if (jsonOk == false) {
       // Connected but the JSON protocol was rejected - the device is not a
       // current Soleux JSON device; report unreachable/unsupported so the AT
       // path is not silently closed over.
+      _applyReachability(live, alive: false);
       return false;
     }
 
     // Legacy AT+ path.
-    return _refreshLegacyAt(live, fetcher);
+    final alive = await _refreshLegacyAt(live, fetcher);
+    _applyReachability(live, alive: alive);
+    return alive;
+  }
+
+  /// Writes the 5008-API reachability verdict of a refresh pass onto [live].
+  ///
+  /// Online/offline is decided *only* by the 5008 Control API: an answered
+  /// round-trip means online, anything else means the module is not currently
+  /// confirmed - a module that was online and is still reachable on the network
+  /// becomes `unknown` (API broken), a module that was never online goes
+  /// straight to `offline` (see [ModuleApiHealthService] for the same policy on
+  /// its periodic check).
+  void _applyReachability(DeviceModule live, {required bool alive}) {
+    final ConnectionStatus next;
+    if (alive) {
+      next = ConnectionStatus.online;
+      live.lastSeenAt = DateTime.now();
+    } else if (live.status == ConnectionStatus.online) {
+      next = ConnectionStatus.unknown;
+    } else {
+      next = ConnectionStatus.offline;
+    }
+    if (live.status != next) {
+      live.status = next;
+      _scheduleCommit();
+    }
   }
 
   /// Refreshes a legacy module (firmware below 7.12, or the AT fallback of a

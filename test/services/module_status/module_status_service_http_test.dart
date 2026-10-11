@@ -136,10 +136,9 @@ void main() {
     expect(await service.refreshOne(module), isTrue);
     await _flush();
 
-    // Configuration was fetched over HTTP and rendered onto the module.
-    expect(store.byId('m-http')!.status, ConnectionStatus.offline,
-        reason: 'online/offline status is owned by the heartbeat monitor, '
-            'not the status refresh');
+    // A successful API round-trip flips the module online.
+    expect(store.byId('m-http')!.status, ConnectionStatus.online,
+        reason: 'a successful 5008 API round-trip must flag the module online');
     expect(store.byId('m-http')!.channels, hasLength(2));
     expect(fake.receivedActions, contains('get_relay_configuration'));
 
@@ -191,9 +190,8 @@ void main() {
     );
     final result = await service.pollAll();
     expect(result.online, hasLength(1));
-    expect(store.byId('m-poll')!.status, ConnectionStatus.offline,
-        reason: 'online/offline status is owned by the heartbeat monitor, '
-            'not the status refresh');
+    expect(store.byId('m-poll')!.status, ConnectionStatus.online,
+        reason: 'a successful API ping must flag the module online');
     expect(fake.receivedActions, contains('ping'));
 
     service.dispose();
@@ -224,9 +222,9 @@ void main() {
     );
     expect(await service.refreshOne(module), isTrue);
     await _flush();
-    expect(store.byId('m-at-http')!.status, ConnectionStatus.offline,
-        reason: 'online/offline status is owned by the heartbeat monitor, '
-            'not the status refresh');
+    expect(store.byId('m-at-http')!.status, ConnectionStatus.online,
+        reason: 'a successful legacy AT round-trip must flag the module '
+            'online: the API reachability path is transport-agnostic');
     expect(store.byId('m-at-http')!.channels, hasLength(2));
     // No HTTP Control API unit survived; the AT unit drives the module.
     expect(service.jsonCommandServiceFor('m-at-http'), isNull);

@@ -11,7 +11,7 @@ import '../services/module_store.dart';
 import '../theme/app_theme.dart';
 
 /// Small green/amber/red dot used everywhere a module's connectivity status is
-/// shown (online = green, suspect = amber, offline = red).
+/// shown (online = green, unknown = grey/amber, offline = red).
 class StatusDot extends StatelessWidget {
   const StatusDot({super.key, required this.status, this.size = 10});
 
@@ -22,7 +22,7 @@ class StatusDot extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = switch (status) {
       ConnectionStatus.online => AppColors.online,
-      ConnectionStatus.suspect => AppColors.suspect,
+      ConnectionStatus.unknown => AppColors.unknown,
       ConnectionStatus.offline => AppColors.offlineAlert,
     };
     return Container(
@@ -528,7 +528,7 @@ class ModuleStatusHeader extends StatelessWidget {
     final tempAlert = module.isOverTemperature;
     final (label, color) = switch (module.status) {
       ConnectionStatus.online => (l10n.online, AppColors.online),
-      ConnectionStatus.suspect => (l10n.suspect, AppColors.suspect),
+      ConnectionStatus.unknown => (l10n.unknown, AppColors.unknown),
       ConnectionStatus.offline => (l10n.offline, AppColors.offlineAlert),
     };
 
