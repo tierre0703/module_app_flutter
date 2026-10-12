@@ -293,7 +293,6 @@ void main() {
         'm-cfg',
         0,
         name: 'Server',
-        enabled: false,
         initialState: OutputInitialState.on,
       ),
       isTrue,
@@ -303,8 +302,9 @@ void main() {
     final sent = fake.received.last;
     expect(sent, contains('"action":"set_output_configuration"'));
     expect(sent, contains('"name":"Server"'));
-    expect(sent, contains('"enabled":false'));
     expect(sent, contains('"initial_state":"on"'));
+    // A channel is always enabled: no enable/disable flag is sent.
+    expect(sent, isNot(contains('enabled')));
 
     service.dispose();
     await fake.server.close();

@@ -192,9 +192,6 @@ class SoleuxJsonFetcher {
     final stdoutNames = {
       for (final o in config.outputs) o.channel: o.name,
     };
-    final stdoutEnabled = {
-      for (final o in config.outputs) o.channel: o.enabled,
-    };
     final stdoutInitialState = {
       for (final o in config.outputs) o.channel: o.initialState,
     };
@@ -207,7 +204,6 @@ class SoleuxJsonFetcher {
             ? deviceName
             : 'Output ${index + 1}',
         icon: Icons.power,
-        enabled: stdoutEnabled[index] ?? true,
         initialState: OutputInitialState.fromWire(stdoutInitialState[index]),
       ));
     }
