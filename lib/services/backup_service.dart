@@ -1,8 +1,10 @@
 // lib/services/backup_service.dart
 //
 // Local backup & restore for the device-manager configuration. A backup is a
-// single versioned JSON file written into the app's documents directory
-// ("soleux_backup.json") that snapshots every piece of user configuration:
+// single versioned JSON file (named
+// `soleux_backup_<location>_v<version>_<timestamp>.json`, see
+// [BackupService.fileNameFor]) that snapshots every piece of user
+// configuration:
 //
 //   - settings            (theme / locale / palette / notification toggles /
 //                          temperature threshold / command transport / custom
@@ -322,8 +324,51 @@ class BackupService {
   @visibleForTesting
   static BackupService forTesting() => BackupService._();
 
-  /// Name of the local backup file inside the app documents directory.
-  static const String fileName = 'soleux_backup.json';
+  /// Prefix every backup file name starts with.
+  static const String filePrefix = 'soleux_backup';
+
+  /// Legacy, fixed backup file name used by earlier builds. Kept so a backup
+  /// written by an older build is still found by [readBackup].
+  static const String legacyFileName = 'soleux_backup.json';
+
+  /// Meaningful, unique backup file name:
+  /// `soleux_backup_<location>_v<major>.<minor>_<yyyyMMdd-HHmmss>.json`
+  ///
+  /// The location slug says what the backup is *of*, the version tells which
+  /// format it is in (so a restore can be reasoned about before opening it) and
+  /// the local timestamp keeps each export distinct and sortable.
+  static String fileNameAt(
+    DateTime at, {
+    String? locationName,
+    BackupVersion version = currentVersion,
+  }) =>
+      '${filePrefix}_${locationSlug(locationName)}_v$version'
+      '_${timestampSlug(at)}.json';
+
+  /// Name of the local backup file written into the default directory. There is
+  /// no single fixed name any more; this is the name for [DateTime.now] (used
+  /// to document the convention and as the FilePicker fallback).
+  static String get fileName =>
+      fileNameAt(DateTime.now(), locationName: SettingsStore.shared.locationName);
+
+  /// Turns a human location name into a file-name-safe slug, falling back to
+  /// `location` when nothing usable is available (`Casa Verde` -> `Casa_Verde`).
+  static String locationSlug(String? locationName) {
+    final slug = (locationName ?? '')
+        .trim()
+        .replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_')
+        .replaceAll(RegExp(r'^_+|_+$'), '');
+    if (slug.isEmpty) return 'location';
+    // Keep file names comfortably short even for a long location name.
+    return slug.length <= 40 ? slug : slug.substring(0, 40);
+  }
+
+  /// Local-time `yyyyMMdd-HHmmss` stamp, sortable and unique per second.
+  static String timestampSlug(DateTime at) {
+    String two(int v) => v.toString().padLeft(2, '0');
+    return '${at.year.toString().padLeft(4, '0')}${two(at.month)}'
+        '${two(at.day)}-${two(at.hour)}${two(at.minute)}${two(at.second)}';
+  }
 
   /// Current backup format version. Bump [major] on breaking structural
   /// changes and register a migration in [_migrations].
@@ -366,10 +411,15 @@ class BackupService {
   /// Pass [directory] to target a specific folder (tests); otherwise the
   /// platform's external storage is used when available (see
   /// [defaultBackupDirectory]). Returns the written [File].
+  ///
+  /// The file is named after the current location, format version and timestamp
+  /// ([fileNameAt]), so successive backups never overwrite each other.
   Future<File> backup({Directory? directory}) async {
     final dir = directory ?? await defaultBackupDirectory();
     if (!await dir.exists()) await dir.create(recursive: true);
-    final file = File('${dir.path}${Platform.pathSeparator}$fileName');
+    final now = DateTime.now();
+    final file = File('${dir.path}${Platform.pathSeparator}'
+        '${fileNameAt(now, locationName: SettingsStore.shared.locationName)}');
     await file.writeAsBytes(await exportBytes());
     return file;
   }
@@ -383,13 +433,48 @@ class BackupService {
     return Uint8List.fromList(utf8.encode(encoder.convert(doc.toJson())));
   }
 
-  /// Reads the backup file inside [directory], or null when none exists /
-  /// is unreadable.
+  /// Reads the most recent backup file inside [directory], or null when none
+  /// exists / is unreadable.
+  ///
+  /// Backups are timestamped ([fileNameAt]), so the newest one is picked by
+  /// modification time; a legacy fixed-name file ([legacyFileName]) is
+  /// recognised too.
   Future<BackupDocument?> readBackup({Directory? directory}) async {
     final dir = directory ?? await defaultBackupDirectory();
-    final file = File('${dir.path}${Platform.pathSeparator}$fileName');
+    final file = await latestBackupFile(dir);
+    if (file == null) return null;
     return readBackupFromFile(file);
   }
+
+  /// The newest backup file in [dir] (by modification time), or null when the
+  /// directory holds no backup.
+  static Future<File?> latestBackupFile(Directory dir) async {
+    if (!await dir.exists()) return null;
+    final backups = <File>[];
+    await for (final entity in dir.list(followLinks: false)) {
+      if (entity is! File) continue;
+      if (!isBackupFileName(entity.uri.pathSegments.last)) continue;
+      backups.add(entity);
+    }
+    if (backups.isEmpty) return null;
+    final stats = <(File, DateTime)>[];
+    for (final file in backups) {
+      try {
+        stats.add((file, (await file.stat()).modified));
+      } on FileSystemException {
+        // Skip files that disappear / are unreadable mid-listing.
+      }
+    }
+    if (stats.isEmpty) return null;
+    stats.sort((a, b) => b.$2.compareTo(a.$2));
+    return stats.first.$1;
+  }
+
+  /// True when [name] follows the backup naming convention (or the legacy
+  /// fixed name).
+  static bool isBackupFileName(String name) =>
+      name == legacyFileName ||
+      (name.startsWith('${filePrefix}_') && name.toLowerCase().endsWith('.json'));
 
   /// Reads the backup at the explicit [file] path (e.g. one picked by the
   /// user), or null when it is missing / unreadable.
@@ -591,7 +676,12 @@ class BackupPathPicker {
 
   static Future<File?> _saveBackupFile(Uint8List bytes) async {
     final path = await FilePicker.platform.saveFile(
-      fileName: BackupService.fileName,
+      // Pre-fill the dialog with a meaningful, unique name the user can accept
+      // or edit (location + format version + timestamp).
+      fileName: BackupService.fileNameAt(
+        DateTime.now(),
+        locationName: SettingsStore.shared.locationName,
+      ),
       bytes: bytes,
     );
     return path == null ? null : File(path);
