@@ -115,7 +115,11 @@ void main() {
 
       final file = await BackupService.shared.backup(directory: dir);
       expect(file.existsSync(), isTrue);
-      expect(file.path, contains(BackupService.fileName));
+      // Name carries the location slug, the format version and a timestamp.
+      final name = file.uri.pathSegments.last;
+      expect(BackupService.isBackupFileName(name), isTrue);
+      expect(name, startsWith('${BackupService.filePrefix}_My_Home_'));
+      expect(name, contains('_v${BackupService.currentVersion}_'));
 
       final json = jsonDecode(file.readAsStringSync()) as Map<String, dynamic>;
       expect(((json['schema'] as Map)['major'] as num).toInt(),
@@ -135,6 +139,50 @@ void main() {
       final dir = await tempDir();
       addTearDown(() => dir.delete(recursive: true));
       expect(await BackupService.shared.readBackup(directory: dir), isNull);
+    });
+
+    test('each backup gets a unique, meaningful file name', () async {
+      final dir = await tempDir();
+      addTearDown(() => dir.delete(recursive: true));
+      await SettingsStore.shared.init();
+      await SettingsStore.shared.setLocation(id: 'loc-9', name: 'Casa Verde');
+
+      final first = await BackupService.shared.backup(directory: dir);
+      final second = await BackupService.shared.backup(directory: dir);
+
+      expect(first.path, isNot(second.path),
+          reason: 'a timestamped name must not overwrite the previous backup');
+      final name = first.uri.pathSegments.last;
+      expect(name, startsWith('${BackupService.filePrefix}_Casa_Verde_v'));
+      expect(name, endsWith('.json'));
+    });
+
+    test('readBackup picks the newest timestamped backup in the directory',
+        () async {
+      final dir = await tempDir();
+      addTearDown(() => dir.delete(recursive: true));
+      await SettingsStore.shared.init();
+
+      final older = File('${dir.path}${Platform.pathSeparator}'
+          '${BackupService.filePrefix}_Home_v1.0_20260101-101010.json');
+      final newer = File('${dir.path}${Platform.pathSeparator}'
+          '${BackupService.filePrefix}_Home_v1.1_20260202-202020.json');
+      await older.writeAsString('{}');
+      await newer.writeAsString('{}');
+      // Force distinct modification times regardless of file-system clock
+      // resolution.
+      await older.setLastModified(DateTime(2026, 1, 1, 10, 10, 10));
+      await newer.setLastModified(DateTime(2026, 2, 2, 20, 20, 20));
+
+      expect(await BackupService.latestBackupFile(dir), newer);
+
+      // A legacy fixed-name backup is still recognised.
+      final legacy = File('${dir.path}${Platform.pathSeparator}'
+          '${BackupService.legacyFileName}');
+      await legacy.writeAsString('{}');
+      expect(BackupService.isBackupFileName(BackupService.legacyFileName),
+          isTrue);
+      expect(BackupService.isBackupFileName('notes.txt'), isFalse);
     });
   });
 
