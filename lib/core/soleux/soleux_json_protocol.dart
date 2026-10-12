@@ -17,9 +17,10 @@
 //   - unknown response properties must be ignored (forward compatibility).
 //
 // Legacy framing (J: prefix) is kept for older PDU / Soleux devices that
-// predate the Control API. Per the spec the `J:` prefix is NOT accepted on the
-// Control API or on the legacy Relay port; it is only used when talking to a
-// device that was verified to answer the legacy JSON protocol.
+// predate the Control API, but is DEPRECATED: current modules speak only the
+// Control API. Per the spec the `J:` prefix is NOT accepted on the Control API
+// or on the legacy Relay port; it is only used when talking to a device that
+// was verified to answer the legacy JSON protocol.
 //
 // This file is deliberately networking-free: a pure codec that any transport
 // (persistent socket, tests, mock) can use. Only JSON line framing lives here.
@@ -31,6 +32,9 @@ import 'package:flutter/foundation.dart';
 
 /// The prefix legacy JSON protocol lines start with on the wire. Only used for
 /// pre-Control-API devices; the Control API itself must not send it.
+///
+/// DEPRECATED: current modules speak only the Control API; retained for the
+/// staged removal of the legacy `J:` framing.
 const String kSoleuxJsonPrefix = 'J:';
 
 /// Framing used on the wire for JSON protocol requests.
@@ -43,6 +47,11 @@ enum SoleuxJsonFraming {
 
   /// Legacy pre-Control-API framing: `J:`-prefixed JSON lines on the legacy
   /// TCP port.
+  ///
+  /// DEPRECATED: current modules speak only the Control API. Retained for the
+  /// staged removal of the legacy framing.
+  @Deprecated('The legacy `J:` framing is no longer supported; the Control API '
+      '(TCP 5008) is the only protocol. Retained for the staged removal.')
   legacyJ,
 }
 
@@ -112,6 +121,7 @@ abstract final class SoleuxControlApiActions {
   SoleuxControlApiActions._();
 
   // Session and protocol (§1).
+  static const String hello = 'hello';
   static const String ping = 'ping';
   static const String authenticate = 'authenticate';
   static const String getCapabilities = 'get_capabilities';

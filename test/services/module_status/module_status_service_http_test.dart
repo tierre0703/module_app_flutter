@@ -136,10 +136,9 @@ void main() {
     expect(await service.refreshOne(module), isTrue);
     await _flush();
 
-    // Configuration was fetched over HTTP and rendered onto the module.
-    expect(store.byId('m-http')!.status, ConnectionStatus.offline,
-        reason: 'online/offline status is owned by the heartbeat monitor, '
-            'not the status refresh');
+    // A successful API round-trip flips the module online.
+    expect(store.byId('m-http')!.status, ConnectionStatus.online,
+        reason: 'a successful 5008 API round-trip must flag the module online');
     expect(store.byId('m-http')!.channels, hasLength(2));
     expect(fake.receivedActions, contains('get_relay_configuration'));
 
@@ -191,16 +190,15 @@ void main() {
     );
     final result = await service.pollAll();
     expect(result.online, hasLength(1));
-    expect(store.byId('m-poll')!.status, ConnectionStatus.offline,
-        reason: 'online/offline status is owned by the heartbeat monitor, '
-            'not the status refresh');
+    expect(store.byId('m-poll')!.status, ConnectionStatus.online,
+        reason: 'a successful API ping must flag the module online');
     expect(fake.receivedActions, contains('ping'));
 
     service.dispose();
     await fake.server.close();
   });
 
-  test('unknown-firmware modules fall back to legacy AT in HTTP mode',
+  test('an unreachable HTTP Control API is no longer backfilled by legacy AT',
       () async {
     final fake = await _HttpStubDevice.start();
     final store = ModuleStore.forTesting();
@@ -214,7 +212,7 @@ void main() {
       roomName: 'Room',
       internalTempC: 0,
       tcpPort: fake.port,
-      apiHttpPort: 1, // unreachable HTTP endpoint -> falls through to AT
+      apiHttpPort: 1, // unreachable HTTP endpoint
     );
     await store.replaceAll([module]);
 
@@ -222,15 +220,16 @@ void main() {
       store: store,
       commandTransport: () => CommandTransportMode.http,
     );
-    expect(await service.refreshOne(module), isTrue);
+    // The AT stub answers AT+... but there is no Control API endpoint: the
+    // module is reported unreachable (the legacy AT fallback is deprecated).
+    expect(await service.refreshOne(module), isFalse);
     await _flush();
     expect(store.byId('m-at-http')!.status, ConnectionStatus.offline,
-        reason: 'online/offline status is owned by the heartbeat monitor, '
-            'not the status refresh');
-    expect(store.byId('m-at-http')!.channels, hasLength(2));
-    // No HTTP Control API unit survived; the AT unit drives the module.
+        reason: 'no Control API answer means the module is offline');
+    // No unit of any kind survives for an unreachable module.
     expect(service.jsonCommandServiceFor('m-at-http'), isNull);
-    expect(service.commandServiceFor('m-at-http'), isNotNull);
+    expect(service.commandServiceFor('m-at-http'), isNull,
+        reason: 'the legacy AT session is deprecated and never created');
 
     service.dispose();
     await fake.server.close();

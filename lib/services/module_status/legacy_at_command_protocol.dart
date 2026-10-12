@@ -1,9 +1,12 @@
 // lib/services/module_status/legacy_at_command_protocol.dart
 //
-// [ModuleCommandProtocol] implementation over the legacy TCP AT protocol
-// (doc/PROTOCOLS.md §1). Used for modules whose firmware predates the Control
-// API (below 7.12). Commands end with `\r`; success is a `\r\nOK\r\n`
-// terminator.
+// DEPRECATED — legacy TCP AT protocol (doc/PROTOCOLS.md §1). Current modules
+// speak only the Control API (JSON) on port 5008; this class is never selected
+// by a production path any more and is retained solely so the legacy `AT+` stack
+// can be deleted in one follow-up step.
+//
+// [ModuleCommandProtocol] implementation over the legacy TCP AT protocol.
+// Commands end with `\r`; success is a `\r\nOK\r\n` terminator.
 //
 // Control mapping (see PROTOCOLS.md §1 command table):
 //   - set on/off   -> AT+ON:<pin> / AT+OFF:<pin>   (commands #8 / #9)
@@ -20,6 +23,8 @@ import 'package:flutter/foundation.dart';
 import 'module_command_protocol.dart';
 import 'module_command_service.dart';
 
+@Deprecated('The legacy AT protocol is no longer supported; the Control API '
+    '(TCP 5008) is the only protocol. Retained for the staged removal.')
 class LegacyAtCommandProtocol implements ModuleCommandProtocol {
   final ModuleCommandService _service;
 

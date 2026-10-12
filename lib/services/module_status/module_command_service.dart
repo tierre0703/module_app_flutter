@@ -1,5 +1,10 @@
 // lib/services/module_status/module_command_service.dart
 //
+// DEPRECATED — legacy AT session service. Current modules speak only the Control
+// API (JSON) on port 5008; this service is never instantiated by a production
+// path any more and is retained solely so the legacy `AT+` stack can be deleted
+// in one follow-up step.
+//
 // Per-module command + status service, mirroring the reference
 // `at_command_service.dart` (AtCommandService) built on top of the connection
 // layer (ModuleTcpConnection, mirror of `tcp_service.dart`).
@@ -36,6 +41,8 @@ class _PendingCommand {
       : buffer = StringBuffer();
 }
 
+@Deprecated('The legacy AT protocol is no longer supported; the Control API '
+    '(TCP 5008) is the only protocol. Retained for the staged removal.')
 class ModuleCommandService {
   final ModuleTcpConnection _connection;
   final ModuleStatusFetcher _fetcher;

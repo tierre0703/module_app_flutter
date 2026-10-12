@@ -15,12 +15,15 @@ import 'package:flutter/material.dart';
 
 import 'theme_palettes.dart';
 
-/// App-wide semantic colors. Green/amber/red are reserved for connectivity
-/// (online / suspect / offline-alert) and never change with the multi-theme,
+/// App-wide semantic colors. Green/grey/red are reserved for connectivity
+/// (online / unknown / offline-alert) and never change with the multi-theme,
 /// so their meaning stays stable across every palette.
 abstract class AppColors {
   static const Color online = Color(0xFF00A651);
-  static const Color suspect = Color(0xFFFFB300);
+
+  /// Reachability unknown: the module was online, but its 5008 API is
+  /// currently broken / not answering.
+  static const Color unknown = Color(0xFF757575);
   static const Color offlineAlert = Color(0xFFD32F2F);
 }
 

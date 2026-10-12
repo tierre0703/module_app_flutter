@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../services/module_host_resolver.dart';
 import '../logger/network_debug_logger.dart';
 import 'app_command.dart';
 import 'transport.dart';
@@ -44,7 +45,19 @@ class LanTransport implements Transport {
     final effectiveTimeout = timeout ?? _timeout;
     Socket? socket;
     try {
-      socket = await Socket.connect(_host, _port).timeout(effectiveTimeout);
+      // `_host` may be an IP literal (LAN) or a domain name (remote mode): the
+      // shared resolver connects either and tries every address a domain
+      // resolves to, so an unreachable IPv6 record cannot hide a working IPv4
+      // endpoint.
+      socket = await connectModuleSocket(
+        _host,
+        _port,
+        timeout: effectiveTimeout,
+        debugTag: 'LanTransport',
+      ).timeout(effectiveTimeout);
+      if (socket == null) {
+        throw SocketException('No reachable address for $_host:$_port');
+      }
       final wire = command.encode();
       NetworkDebugLogger.outbound('tcp', '$_host:$_port', wire);
       socket.write(utf8.encode(wire));

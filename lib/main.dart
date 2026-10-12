@@ -29,18 +29,20 @@ import 'screens/splash_screen.dart';
 import 'screens/system_status_screen.dart';
 import 'services/automation_scheduler.dart';
 import 'services/automation_store.dart';
-import 'services/room_store.dart';
 import 'services/module_status/background_status_worker.dart';
 import 'services/module_status/module_keep_alive.dart';
 import 'services/module_status/module_status_scheduler.dart';
 import 'services/module_status/module_status_service.dart';
+import 'services/module_store.dart';
 import 'services/notification_monitor.dart';
 import 'services/notification_service.dart';
+import 'services/room_store.dart';
 import 'services/scenario_store.dart';
 import 'services/session_store.dart';
 import 'services/settings_store.dart';
 import 'theme/app_theme.dart';
 import 'theme/theme_palettes.dart';
+import 'widgets/common_widgets.dart';
 
 /// Application-wide navigator key, used by [AppLifecycleGate] to reach the
 /// navigator from outside any widget tree.
@@ -251,7 +253,17 @@ class _RootShellState extends State<RootShell> with RestorationMixin {
     // shell is up. Placed here rather than the splash because on state
     // restoration the splash route is skipped entirely - the navigator restores
     // straight into '/root'.
-    ModuleStatusService.shared.refreshAll().ignore();
+    _connectFleet();
+  }
+
+  /// Resolves hostname-addressed modules once at app load so their cached IPv4
+  /// address is ready before the first connection (no DNS on connect), then
+  /// connects to every configured module and pulls a fresh status dump.
+  Future<void> _connectFleet() async {
+    await ModuleStore.shared.init();
+    await ModuleAddressResolver.resolveAll(ModuleStore.shared.modules);
+    await ModuleStore.shared.commit();
+    await ModuleStatusService.shared.refreshAll();
   }
 
   @override

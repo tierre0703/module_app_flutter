@@ -12,14 +12,16 @@
 //     guards every outstanding request;
 //   - the Control API framing (a plain JSON object per line, no `J:` prefix,
 //     with the outer `protocol` field) is the default. [SoleuxJsonFraming.legacyJ]
-//     selects the legacy `J:` framing for pre-Control-API devices;
+//     is DEPRECATED (legacy pre-Control-API devices) and no longer used by a
+//     production path; retained for the staged removal of the legacy stack;
 //   - unsolicited JSON device events (`event` + `data`, or the protocol-2
 //     broadcast `event` + `result` with `id:null`, doc/...Specification_v0.6.md
 //     §"Device events" / Soleux-Mobile-TCP-Protocol.md) are routed to
 //     [deviceEventStream] as parsed [SoleuxDeviceEvent]s;
-//   - non-JSON lines (welcome status dump, unsolicited `OUT:`/`IN:` state,
-//     `OVERRIDE:`, `GETENERGY:`, `OK`, `Error : Function Disabled`, ...) are
-//     routed to [eventStream] as parsed [SoleuxLegacyEvent]s.
+//   - non-JSON lines (legacy welcome status dump, unsolicited `OUT:`/`IN:`
+//     state, `OVERRIDE:`, `GETENERGY:`, `OK`, ...) are routed to [eventStream]
+//     as parsed [SoleuxLegacyEvent]s. This is DEPRECATED legacy handling and is
+//     retained for the staged removal of the legacy stack.
 //
 // Command framing lives here; rendering onto a [DeviceModule] is the job of the
 // Soleux JSON fetcher (soleux_json_fetcher.dart).
@@ -43,6 +45,11 @@ class _JsonPending {
 }
 
 /// Kind of a parsed non-JSON (legacy) line.
+///
+/// DEPRECATED — legacy protocol handling; retained for the staged removal of
+/// the legacy stack (current modules push JSON Control API device events).
+@Deprecated('The legacy non-JSON line protocol is no longer supported; the '
+    'Control API (TCP 5008) is the only protocol. Retained for staged removal.')
 enum SoleuxLegacyEventType {
   output,
   input,
@@ -55,6 +62,10 @@ enum SoleuxLegacyEventType {
 }
 
 /// A parsed non-JSON (legacy) line emitted by the device.
+///
+/// DEPRECATED — legacy protocol handling; retained for the staged removal.
+@Deprecated('The legacy non-JSON line protocol is no longer supported; the '
+    'Control API (TCP 5008) is the only protocol. Retained for staged removal.')
 class SoleuxLegacyEvent {
   final String raw;
   final SoleuxLegacyEventType type;
@@ -330,12 +341,15 @@ class SoleuxJsonService extends SoleuxControlApiService {
   /// up to (and including) the `OK`/`ERROR` terminator, or everything received
   /// before [timeout] elapses.
   ///
-  /// This helper is only meaningful on the legacy path (a pre-Control-API
-  /// device, or the AT-only legacy port). Modern live control uses the Control
-  /// API catalogue commands ([setOutputState], [toggleOutput], [setDimmerLevel], ...).
+  /// DEPRECATED — legacy path only (pre-Control-API devices / the AT-only legacy
+  /// port). Current modules use the Control API catalogue commands
+  /// ([setOutputState], [toggleOutput], [setDimmerLevel], ...). Retained for the
+  /// staged removal of the legacy stack.
   ///
   /// Requests are CRLF-terminated per the legacy protocol
   /// (doc/Soleux-Mobile-TCP-Protocol.md §"Transport").
+  @Deprecated('The legacy AT protocol is no longer supported; the Control API '
+      '(TCP 5008) is the only protocol. Retained for the staged removal.')
   Future<String> legacy(String command,
       {Duration timeout = const Duration(seconds: 5)}) async {
     final completer = Completer<String>();
