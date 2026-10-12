@@ -36,7 +36,7 @@ Ast: `✅` implemented · `🟡` partial (notes follow) · `❌` not implemented
 - [x] ✅ Temperature card per module on Home; reads `ModuleStore.internalTempC`.
 - [x] ✅ Per-module min/max temperature thresholds (`tempMinC` / `tempMaxC`) — settable on `TemperatureModuleScreen`.
 - [x] ✅ Temperature alert renders as a second `_AlertBanner` (same component as offline).
-- [x] ✅ Real-time updates from local TCP probes (where supported — see Configuration §2.3 caveat).
+- [x] ✅ Real-time updates from local TCP probes (Control API on 5008; see Configuration §2.3 caveat).
 
 ---
 
@@ -45,12 +45,14 @@ Ast: `✅` implemented · `🟡` partial (notes follow) · `❌` not implemented
 ### 2.1 Adding and Managing Modules
 
 - [x] ✅ Self-discovery broadcast handler — `ModuleDiscovery` (UDP `:8000`, see `doc/PROTOCOLS.md §2`), surfaced in `AddModuleScreen`.
-- [x] ✅ Add modules by IP address (manual fallback with TCP port selection).
+- [x] ✅ Add modules by IP address **or hostname** (remote mode resolves to IPv4); manual fallback with TCP port selection.
 - [x] ✅ Module list (Device List) with online/offline status dot — `ConfigurationScreen`.
 
 ### Hybrid Communication Protocol
 
-- [x] ✅ **Local Control** — `LanTransport` (TCP :5008) and per-module persistent `ModuleCommandService` with auto-reconnect.
+- [x] ✅ **Local Control** — `LanTransport` (TCP :5008) and per-module persistent Control API session with auto-reconnect.
+- [x] ✅ **Control API is the only supported protocol** — modules are driven over the TCP Control API (JSON) on port 5008; a module that does not answer it is reported offline.
+- [x] 🟡 **Legacy AT + legacy `J:` protocol — DEPRECATED** — the `AT+` (doc/PROTOCOLS.md §1) and `J:`-framed stacks are no longer used by any production path (no AT fallback, no `J:` probe). The files are retained, annotated `@Deprecated`, and scheduled for removal in one follow-up step.
 - [x] 🟡 **Remote Control (MQTT)** — `MqttTransport` class exists (`core/transport/mqtt_transport.dart`) and `mqtt_client` package is in `pubspec.yaml`, but **no consumer wires it** in screens/services. Failover is also a class only, not bound.
 - [x] ❌ Per-command LAN→MQTT failover resolver — `FailoverTransport` implemented as a class but **not instantiated** anywhere in the running app.
 

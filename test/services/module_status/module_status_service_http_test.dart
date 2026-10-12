@@ -198,7 +198,7 @@ void main() {
     await fake.server.close();
   });
 
-  test('unknown-firmware modules fall back to legacy AT in HTTP mode',
+  test('an unreachable HTTP Control API is no longer backfilled by legacy AT',
       () async {
     final fake = await _HttpStubDevice.start();
     final store = ModuleStore.forTesting();
@@ -212,7 +212,7 @@ void main() {
       roomName: 'Room',
       internalTempC: 0,
       tcpPort: fake.port,
-      apiHttpPort: 1, // unreachable HTTP endpoint -> falls through to AT
+      apiHttpPort: 1, // unreachable HTTP endpoint
     );
     await store.replaceAll([module]);
 
@@ -220,15 +220,16 @@ void main() {
       store: store,
       commandTransport: () => CommandTransportMode.http,
     );
-    expect(await service.refreshOne(module), isTrue);
+    // The AT stub answers AT+... but there is no Control API endpoint: the
+    // module is reported unreachable (the legacy AT fallback is deprecated).
+    expect(await service.refreshOne(module), isFalse);
     await _flush();
-    expect(store.byId('m-at-http')!.status, ConnectionStatus.online,
-        reason: 'a successful legacy AT round-trip must flag the module '
-            'online: the API reachability path is transport-agnostic');
-    expect(store.byId('m-at-http')!.channels, hasLength(2));
-    // No HTTP Control API unit survived; the AT unit drives the module.
+    expect(store.byId('m-at-http')!.status, ConnectionStatus.offline,
+        reason: 'no Control API answer means the module is offline');
+    // No unit of any kind survives for an unreachable module.
     expect(service.jsonCommandServiceFor('m-at-http'), isNull);
-    expect(service.commandServiceFor('m-at-http'), isNotNull);
+    expect(service.commandServiceFor('m-at-http'), isNull,
+        reason: 'the legacy AT session is deprecated and never created');
 
     service.dispose();
     await fake.server.close();

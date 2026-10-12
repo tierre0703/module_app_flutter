@@ -1,6 +1,10 @@
-// Tests for ModuleProtocolSelector: the firmware-driven choice between the
-// Control API (doc/Soleux_Control_API_Command_Specification_v0.3.md) and the
-// legacy TCP AT protocol (doc/PROTOCOLS.md §1).
+// Tests for ModuleProtocolSelector: the firmware-driven protocol choice.
+//
+// Current modules speak ONLY the Control API (doc/Soleux_Control_API_Command_
+// Specification_v0.3.md) on port 5008; the legacy TCP AT protocol
+// (doc/PROTOCOLS.md §1) is deprecated and never selected for a current module.
+// Only a known pre-7.12 firmware still resolves to the retained (deprecated)
+// legacyAt value.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soleux_device_manager/models/models.dart';
 import 'package:soleux_device_manager/services/module_status/module_command_protocol.dart';
@@ -55,12 +59,13 @@ void main() {
   });
 
   test(
-      'unknown firmware without advertisement defaults to legacyAt, '
-      'without pinning', () {
+      'unknown firmware without advertisement selects the Control API '
+      'without pinning (legacy AT is deprecated)', () {
     final d = selector.decide(module());
-    expect(d.kind, ModuleCommandProtocolKind.legacyAt);
+    expect(d.kind, ModuleCommandProtocolKind.controlApi);
     expect(d.pinned, isFalse,
-        reason: 'unknown firmware stays probeable (may still speak JSON)');
+        reason: 'unknown firmware stays probeable; the Control API on 5008 is '
+            'the only supported protocol');
   });
 
   test('decideForFirmware returns null when the version is unknown', () {

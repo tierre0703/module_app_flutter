@@ -1,5 +1,10 @@
 // lib/services/module_status/pdu_protocol.dart
 //
+// DEPRECATED — legacy PDU ASCII (`AT+`) protocol parser and constants. Current
+// modules speak only the Control API (JSON) on port 5008; nothing in a
+// production path parses these lines any more. Retained solely so the legacy
+// `AT+` stack can be deleted in one follow-up step.
+//
 // Parser + shared constants for the TCP ASCII protocol described in
 // doc/PROTOCOLS.md §1 ("PDUCore Socket Communication Protocols").
 //
@@ -16,7 +21,9 @@
 library;
 
 /// The `AT` command set relevant to a standard relay, mirrored from
-/// PROTOCOLS.md §1. Referential only - fetchers may use substrings of these.
+/// PROTOCOLS.md §1. Referential only.
+@Deprecated('The legacy AT protocol is no longer supported; the Control API '
+    '(TCP 5008) is the only protocol. Retained for the staged removal.')
 class PduAtCommands {
   PduAtCommands._();
 
@@ -37,6 +44,8 @@ class PduAtCommands {
 ///   - `IN:<pin>:<ON|OFF>`             -> [inputs]
 ///   - `CHNAME_OUT:<pin>:<name>`       -> [outputNames]
 ///   - `CHNAME_IN:<pin>:<name>`        -> [inputNames]
+@Deprecated('The legacy AT protocol is no longer supported; the Control API '
+    '(TCP 5008) is the only protocol. Retained for the staged removal.')
 class PduResponse {
   /// True when the response was terminated by `OK`, false for `ERROR`.
   final bool ok;

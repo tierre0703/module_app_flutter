@@ -4,10 +4,11 @@
 // wire protocols live:
 //
 //   - [ControlApiCommandProtocol] - the Soleux Control API (JSON envelope)
-//     described in doc/Soleux_Control_API_Command_Specification_v0.3.md, used
-//     by modules whose firmware is >= 7.12;
+//     described in doc/Soleux_Control_API_Command_Specification_v0.3.md, the
+//     ONLY protocol current modules speak, on the TCP Control API port (5008);
 //   - [LegacyAtCommandProtocol]   - the legacy TCP AT protocol described in
-//     doc/PROTOCOLS.md §1, used by older modules.
+//     doc/PROTOCOLS.md §1. DEPRECATED, never selected for a current module;
+//     kept only for the staged removal of the legacy stack.
 //
 // [ModuleStatusService] controls modules exclusively through this interface, so
 // adding a future transport (HTTP REST, MQTT, ...) only requires a new
@@ -21,6 +22,12 @@ enum ModuleCommandProtocolKind {
   controlApi,
 
   /// Legacy `AT+` ASCII commands on the legacy TCP port (doc/PROTOCOLS.md §1).
+  ///
+  /// DEPRECATED: current modules use only the Control API on port 5008. This
+  /// value is never selected for a current module; it is retained so the
+  /// remaining legacy AT files compile and can be removed in one follow-up.
+  @Deprecated('The legacy AT protocol is no longer supported; use controlApi '
+      '(TCP 5008). Retained only for the staged removal of the legacy stack.')
   legacyAt,
 }
 

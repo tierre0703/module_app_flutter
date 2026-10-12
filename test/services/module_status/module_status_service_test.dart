@@ -386,8 +386,8 @@ void main() {
   });
 
   test(
-      'a module pinned to legacy (firmware < 7.12) is refreshed and '
-      'controlled over the TCP AT protocol only', () async {
+      'a module pinned to legacy (firmware < 7.12) is no longer refreshed '
+      'over AT: the Control API is the only supported protocol', () async {
     final fake = await _FakeAtDevice.start();
     final store = ModuleStore.forTesting();
     final module = DeviceModule(
@@ -404,21 +404,16 @@ void main() {
     await store.replaceAll([module]);
 
     final service = ModuleStatusService(store: store);
-    expect(await service.refreshOne(module), isTrue);
+    // The AT device answers AT+VER/... but no Control API hello: with the
+    // legacy protocol deprecated the refresh reports the module unreachable
+    // instead of falling back to AT.
+    expect(await service.refreshOne(module), isFalse);
     await _flush();
 
-    expect(store.byId('m-at')!.status, ConnectionStatus.online,
-        reason: 'a successful legacy AT round-trip must flag the module online');
-    expect(store.byId('m-at')!.firmware, '7.10 Build :1');
-    expect(store.byId('m-at')!.channels, hasLength(2));
-    expect(store.byId('m-at')!.channels[1].isOn, isTrue);
-    // A pinned legacy module is never probed with JSON.
-    expect(service.jsonCommandServiceFor('m-at'), isNull,
-        reason: 'a pinned legacy module must not create a JSON unit');
-    // Live control goes over the legacy AT path.
-    expect(await service.turnOffOutput('m-at', 1), isTrue);
-    await _flush();
-    expect(store.byId('m-at')!.channels[1].isOn, isFalse);
+    expect(store.byId('m-at')!.status, ConnectionStatus.offline,
+        reason: 'no Control API answer means the module is offline');
+    expect(service.commandServiceFor('m-at'), isNull,
+        reason: 'the legacy AT session is deprecated and never created');
 
     service.dispose();
     await fake.server.close();

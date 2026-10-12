@@ -1,6 +1,9 @@
 // lib/services/module_status/base_module_status_fetcher.dart
 //
-// Generic status reconciliation shared by every module type.
+// DEPRECATED — legacy AT status reconciliation shared by the AT fetchers.
+// Current modules are refreshed through the Control API (JSON) on port 5008;
+// this base class is no longer exercised by a production path and is retained
+// solely so the legacy `AT+` stack can be deleted in one follow-up step.
 //
 // On top of fetching *online/offline*, a status pass also captures module info
 // and the topology reported by the device over PROTOCOLS.md §1:
@@ -24,6 +27,8 @@ import '../../models/models.dart';
 import 'module_status_fetcher.dart';
 import 'pdu_protocol.dart';
 
+@Deprecated('The legacy AT protocol is no longer supported; the Control API '
+    '(TCP 5008) is the only protocol. Retained for the staged removal.')
 abstract class BaseModuleStatusFetcher implements ModuleStatusFetcher {
   const BaseModuleStatusFetcher();
 
