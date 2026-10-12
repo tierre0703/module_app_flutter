@@ -131,13 +131,12 @@ void main() {
               name: 'Light',
               icon: Icons.lightbulb,
               isOn: true,
-              enabled: false,
               initialState: OutputInitialState.on,
             ),
           ],
         ));
     final channel = r.fetch().single.channels.single;
-    expect(channel.enabled, isFalse);
+    expect(channel.isOn, isTrue);
     expect(channel.initialState, OutputInitialState.on);
   });
 }

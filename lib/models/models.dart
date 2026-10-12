@@ -153,7 +153,6 @@ class ChannelOutput {
     required this.icon,
     this.isOn = false,
     this.brightness = 0,
-    this.enabled = true,
     this.stepSize = 1,
     this.initialState = OutputInitialState.lastState,
   });
@@ -171,9 +170,6 @@ class ChannelOutput {
   /// Brightness step size (0-100) this output's dimmer slider moves in;
   /// pulled from the device's `output_off_delay` (default 1).
   int stepSize;
-
-  /// Whether the output is shown / controllable on the module screen.
-  bool enabled;
 
   /// State the output settles in after the module starts (`initial_state`).
   OutputInitialState initialState;
@@ -201,7 +197,6 @@ class ChannelOutput {
         'isOn': isOn,
         'brightness': brightness,
         'stepSize': stepSize,
-        'enabled': enabled,
         'initialState': initialState.name,
       };
 
@@ -212,7 +207,7 @@ class ChannelOutput {
         isOn: json['isOn'] as bool? ?? false,
         brightness: json['brightness'] as int? ?? 0,
         stepSize: (json['stepSize'] as num?)?.toInt() ?? 1,
-        enabled: json['enabled'] as bool? ?? true,
+        // A legacy `enabled` key is ignored: channels are always shown.
         initialState: OutputInitialState.fromWire(json['initialState']),
       );
 }

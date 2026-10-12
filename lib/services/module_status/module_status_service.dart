@@ -771,15 +771,14 @@ class ModuleStatusService {
       jsonCommandServiceFor(moduleId);
 
   /// Saves an output's configuration (`set_output_configuration`, Control API
-  /// spec §4.9): its display [name], [enabled] flag (whether control /
-  /// display is permitted) and startup [initialState] (ON / OFF / Last State).
+  /// spec §4.9): its display [name] and startup [initialState] (ON / OFF /
+  /// Last State). A channel is always enabled, so no `enabled` flag is sent.
   /// Last State omits `initial_state` so the module restores its pre-restart
   /// state. Returns whether the module accepted the change.
   Future<bool> updateOutputConfiguration(
     String moduleId,
     int index, {
     String? name,
-    bool? enabled,
     OutputInitialState? initialState,
   }) async {
     final unit = jsonCommandServiceFor(moduleId);
@@ -788,7 +787,6 @@ class ModuleStatusService {
       final wire = initialState?.wireValue;
       final response = await unit.setOutputConfiguration(index, {
         if (name != null) 'name': name,
-        if (enabled != null) 'enabled': enabled,
         if (wire != null) 'initial_state': wire,
       });
       if (!response.ok) {

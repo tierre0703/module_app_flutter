@@ -60,7 +60,7 @@ Ast: `✅` implemented · `🟡` partial (notes follow) · `❌` not implemented
 
 - [x] ✅ List of all module outputs (e.g. 8 on the seeded relay) — `RelayControlScreen`.
 - [x] ✅ Large ON/OFF direct-command button per output (≥48dp touch targets).
-- [x] ✅ Output naming — `ChannelEditorScreen`.
+- [x] ✅ Output naming — `ChannelEditorScreen` (name, icon and startup state only; channels are always shown, no enable/disable).
 - [x] ✅ Icon per output — same editor, `kChannelIconChoices`.
 - [x] ✅ Physical input configuration (`InputEditorScreen`):
   - [x] ✅ Momentary mode
