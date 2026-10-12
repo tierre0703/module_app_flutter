@@ -20,6 +20,10 @@
 // The scheduler reacts to the [AutomationStore] too: enabling/disabling,
 // editing or deleting a rule re-arms/releases its timers and watch baselines
 // automatically.
+//
+// The watched module/output/input is resolved by *index* (fleet position +
+// channel/input position), with the saved names kept only as a legacy
+// fallback, so renaming a device never breaks a rule.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -212,7 +216,9 @@ class AutomationScheduler {
       final on = _resolveWatchOn(a);
       if (on == null) continue;
       final signature =
-          '${a.watchModuleName}|${a.watchIsInput}|${a.watchInputName}|${a.watchChannelName}|${a.watchState}';
+          '${a.watchModuleIndex}|${a.watchModuleName}|${a.watchIsInput}|'
+          '${a.watchInputIndex}|${a.watchInputName}|'
+          '${a.watchChannelIndex}|${a.watchChannelName}|${a.watchState}';
 
       // First observation (or a changed watch target): record the baseline so
       // the rule never fires for a state that already existed.
@@ -236,44 +242,71 @@ class AutomationScheduler {
   /// Resolves the live on-state of the output or input [automation] watches
   /// across the fleet, or null when the target cannot be found.
   bool? _resolveWatchOn(Automation a) {
+    final modules = moduleStore.modules;
+    final module = _resolveWatchModule(modules, a);
     if (a.watchIsInput) {
-      final input = _resolveInput(a.watchModuleName, a.watchInputName);
+      final index = _resolveInputIndex(module, modules, a);
+      if (index < 0) return null;
+      final input = module!.inputs[index];
       // A disabled input is not watched anywhere in the app.
-      if (input == null || !input.enabled) return null;
+      if (!input.enabled) return null;
       return input.state;
     }
-    final channel = _resolveChannel(a.watchModuleName, a.watchChannelName);
-    if (channel == null) return null;
+    final index = _resolveChannelIndex(module, modules, a);
+    if (index < 0) return null;
+    final channel = module!.channels[index];
     return channel.isOn || channel.brightness > 0;
   }
 
-  /// Resolves the output [channelName] belonging to [moduleName] across the
-  /// fleet (first match). A null [moduleName] (legacy automations) matches any
-  /// module, but when a module is specified the match is confined to it, so
-  /// same-named outputs on different modules don't collide.
-  ChannelOutput? _resolveChannel(String? moduleName, String? channelName) {
-    if (channelName == null) return null;
-    for (final m in moduleStore.modules) {
-      if (moduleName != null && m.name != moduleName) continue;
-      for (final c in m.channels) {
-        if (c.name == channelName) return c;
-      }
+  /// The module a device-state rule watches: by fleet index when wired,
+  /// otherwise (legacy) by the saved module name. A null result means "any
+  /// module" (legacy rules saved before module selection existed).
+  DeviceModule? _resolveWatchModule(List<DeviceModule> modules, Automation a) {
+    final byIndex = moduleAtIndex(modules, a.watchModuleIndex);
+    if (byIndex != null) return byIndex;
+    if (a.watchModuleName == null) return null;
+    for (final m in modules) {
+      if (m.name == a.watchModuleName) return m;
     }
     return null;
   }
 
-  /// Resolves the [PhysicalInput] [inputName] belonging to [moduleName]
-  /// across the fleet (first match). A null [moduleName] (legacy automations)
-  /// matches any module.
-  PhysicalInput? _resolveInput(String? moduleName, String? inputName) {
-    if (inputName == null) return null;
-    for (final m in moduleStore.modules) {
-      if (moduleName != null && m.name != moduleName) continue;
-      for (final i in m.inputs) {
-        if (i.name == inputName) return i;
+  /// The watched output index on [module]: the stored index when valid, a
+  /// legacy name match on the module, or a fleet-wide name match when the
+  /// automation has no module (legacy). Returns -1 when nothing matches.
+  int _resolveChannelIndex(
+      DeviceModule? module, List<DeviceModule> modules, Automation a) {
+    if (module != null) {
+      if (a.watchChannelIndex >= 0 &&
+          a.watchChannelIndex < module.channels.length) {
+        return a.watchChannelIndex;
       }
+      return module.channels
+          .indexWhere((c) => c.name == a.watchChannelName);
     }
-    return null;
+    if (a.watchChannelName == null) return -1;
+    for (final m in modules) {
+      final index = m.channels.indexWhere((c) => c.name == a.watchChannelName);
+      if (index >= 0) return index;
+    }
+    return -1;
+  }
+
+  /// The watched input index on [module]; see [_resolveChannelIndex].
+  int _resolveInputIndex(
+      DeviceModule? module, List<DeviceModule> modules, Automation a) {
+    if (module != null) {
+      if (a.watchInputIndex >= 0 && a.watchInputIndex < module.inputs.length) {
+        return a.watchInputIndex;
+      }
+      return module.inputs.indexWhere((i) => i.name == a.watchInputName);
+    }
+    if (a.watchInputName == null) return -1;
+    for (final m in modules) {
+      final index = m.inputs.indexWhere((i) => i.name == a.watchInputName);
+      if (index >= 0) return index;
+    }
+    return -1;
   }
 
   /// Executes [automation]'s actions, records the trigger and per-action

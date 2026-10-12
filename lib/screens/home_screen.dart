@@ -682,8 +682,19 @@ class _QuickScenarioCardState extends State<_QuickScenarioCard> {
 
   Scenario get scenario => widget.scenario;
 
-  ChannelOutput? get sliderChannel => dimmerTargetChannel(
-      ModuleStore.shared.modules, scenario.sliderTargetName);
+  /// Resolves the manual-slider target by index (stable across renames), with
+  /// the saved target name as a legacy fallback.
+  (DeviceModule, int)? get _sliderRef => dimmerTargetRef(
+        ModuleStore.shared.modules,
+        moduleIndex: scenario.sliderModuleIndex,
+        channelIndex: scenario.sliderChannelIndex,
+        targetName: scenario.sliderTargetName,
+      );
+
+  ChannelOutput? get sliderChannel {
+    final ref = _sliderRef;
+    return ref == null ? null : ref.$1.channels[ref.$2];
+  }
 
   /// The slider's displayed value: the in-progress drag value, else the target
   /// channel's live PWM (the module is the source of truth), falling back to
@@ -709,8 +720,7 @@ class _QuickScenarioCardState extends State<_QuickScenarioCard> {
     _dimmerDebounce?.cancel();
     _dimmerDebounce = Timer(const Duration(milliseconds: 80), () {
       _dimmerDebounce = null;
-      final ref = dimmerTargetRef(
-          ModuleStore.shared.modules, scenario.sliderTargetName);
+      final ref = _sliderRef;
       if (ref != null) {
         ModuleStatusService.shared.setDimmerLevel(ref.$1.id, ref.$2, v);
       }
@@ -723,8 +733,7 @@ class _QuickScenarioCardState extends State<_QuickScenarioCard> {
     final v = _dragValue;
     setState(() => _dragValue = null);
     if (v == null) return;
-    final ref =
-        dimmerTargetRef(ModuleStore.shared.modules, scenario.sliderTargetName);
+    final ref = _sliderRef;
     if (ref != null) {
       ModuleStatusService.shared.setDimmerLevel(ref.$1.id, ref.$2, v);
     }

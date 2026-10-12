@@ -174,7 +174,10 @@ void main() {
       await older.setLastModified(DateTime(2026, 1, 1, 10, 10, 10));
       await newer.setLastModified(DateTime(2026, 2, 2, 20, 20, 20));
 
-      expect(await BackupService.latestBackupFile(dir), newer);
+      expect(await BackupService.latestBackupFile(dir),
+          isNotNull,
+          reason: 'the newest timestamped backup must be picked');
+      expect((await BackupService.latestBackupFile(dir))!.path, newer.path);
 
       // A legacy fixed-name backup is still recognised.
       final legacy = File('${dir.path}${Platform.pathSeparator}'
