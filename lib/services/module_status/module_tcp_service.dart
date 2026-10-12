@@ -19,7 +19,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../core/logger/network_debug_logger.dart';
-import 'module_host_resolver.dart';
+import '../module_host_resolver.dart';
 
 class ModuleTcpConnection {
   final String host;

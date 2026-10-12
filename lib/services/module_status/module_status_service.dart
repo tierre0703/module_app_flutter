@@ -42,7 +42,7 @@ import 'control_api_command_protocol.dart';
 import 'legacy_at_command_protocol.dart';
 import 'module_command_protocol.dart';
 import 'module_command_service.dart';
-import 'module_host_resolver.dart';
+import '../module_host_resolver.dart';
 import 'module_protocol_selector.dart';
 import 'module_status_fetcher.dart';
 import 'module_tcp_service.dart';
@@ -943,7 +943,7 @@ class ModuleStatusService {
     var reachable = false;
     try {
       socket = await connectModuleSocket(
-        module.ipAddress,
+        module.host,
         module.tcpPort,
         timeout: timeout,
         debugTag: 'ModuleStatusService',
@@ -1005,7 +1005,7 @@ class ModuleStatusService {
     final splitter = SoleuxLineSplitter();
     try {
       socket = await connectModuleSocket(
-        module.ipAddress,
+        module.host,
         module.controlApiPort,
         timeout: timeout,
         debugTag: 'ModuleStatusService',
@@ -1391,11 +1391,16 @@ class ModuleStatusService {
   /// stack can be removed in one follow-up step.
   @Deprecated('The legacy AT protocol is no longer supported; the Control API '
       '(TCP 5008) is the only protocol. Retained for the staged removal.')
+  /// Gets the persistent unit for [module], creating (and wiring) it the first
+  /// time. Its live streams are routed into the store on creation only. A unit
+  /// bound to a different endpoint (the module's address or TCP port changed,
+  /// e.g. via the edit-module-info dialog) is disposed and recreated so it never
+  /// keeps reconnecting to the stale endpoint.
   ModuleCommandService _ensureUnit(
       DeviceModule module, ModuleStatusFetcher fetcher) {
     final existing = _units[module.id];
     if (existing != null &&
-        existing.connection.host == module.ipAddress &&
+        existing.connection.host == module.host &&
         existing.connection.port == module.tcpPort) {
       return existing;
     }
@@ -1403,7 +1408,7 @@ class ModuleStatusService {
 
     final unit = ModuleCommandService(
       connection: ModuleTcpConnection(
-        host: module.ipAddress,
+        host: module.host,
         port: module.tcpPort,
         timeout: timeout,
       ),
@@ -1437,7 +1442,7 @@ class ModuleStatusService {
 
     final unit = SoleuxJsonService(
       connection: ModuleTcpConnection(
-        host: module.ipAddress,
+        host: module.host,
         port: port,
         timeout: timeout,
       ),
@@ -1465,12 +1470,10 @@ class ModuleStatusService {
   /// Gets the persistent HTTP/HTTPS Control API unit for [module]
   /// (`POST /api/v1/command`). No persistent socket is kept; `connect` is a
   /// reachability probe. When an existing unit targets a different endpoint
-  /// (or the module changed IP / the transport setting changed), the old unit
-  /// is disposed and replaced.
-  ///
-  /// In remote mode a module may be addressed by a domain name: when that name
-  /// does not resolve (offline DNS, VPN not up), the HTTP unit falls back to
-  /// the module's last known IP address so control can still be attempted.
+  /// (or the module address / the transport setting changed), the old unit is
+  /// disposed and replaced. The endpoint uses the module's cached IP
+  /// ([DeviceModule.host]); an unresolved hostname still gets one diagnostic
+  /// log line.
   SoleuxHttpService _ensureHttpUnit(
       DeviceModule module, CommandTransportMode mode) {
     final baseUri = controlApiHttpEndpoint(module, mode);
@@ -1482,7 +1485,7 @@ class ModuleStatusService {
 
     final unit = SoleuxHttpService(baseUri: baseUri, timeout: timeout);
     _jsonUnits[module.id] = unit;
-    _warnIfUnresolvable(module);
+    if (module.resolvedIp == null) _warnIfUnresolvable(module);
     return unit;
   }
 
@@ -1497,8 +1500,8 @@ class ModuleStatusService {
         await resolveModuleAddresses(host, debugTag: 'ModuleStatusService');
     if (addresses.isEmpty) {
       debugPrint('ModuleStatusService: "${module.ipAddress}" (module '
-          '${module.name}) does not resolve; it is unreachable until DNS '
-          'recovers');
+          '${module.name}) does not resolve and has no cached IP; it is '
+          'unreachable until the address is refreshed (app load / add / edit)');
     }
   }
 
@@ -1672,14 +1675,16 @@ class ModuleStatusService {
 
   /// The Control API command endpoint for [module] per the app's HTTP/HTTPS
   /// transport choice (spec §"Transport mapping"): HTTP port 80, HTTPS port
-  /// 443, path `/api/v1/command`. [DeviceModule.apiHttpPort] overrides the
-  /// port when set (development / non-standard deployments).
+  /// 443, path `/api/v1/command`. The host is the module's cached IP
+  /// ([DeviceModule.host]) so no DNS lookup is needed per request.
+  /// [DeviceModule.apiHttpPort] overrides the port when set (development /
+  /// non-standard deployments).
   static Uri controlApiHttpEndpoint(
       DeviceModule module, CommandTransportMode mode) {
     final https = mode == CommandTransportMode.https;
     return Uri(
       scheme: https ? 'https' : 'http',
-      host: module.ipAddress,
+      host: module.host,
       port: module.apiHttpPort ?? (https ? 443 : 80),
       path: '/api/v1/command',
     );

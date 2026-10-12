@@ -10,7 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:soleux_device_manager/models/models.dart';
 import 'package:soleux_device_manager/services/module_store.dart';
 import 'package:soleux_device_manager/services/module_status/module_api_health_service.dart';
-import 'package:soleux_device_manager/services/module_status/module_host_resolver.dart';
+import 'package:soleux_device_manager/services/module_host_resolver.dart';
 
 /// Fake Control API device: answers the JSON `hello` while [answering] is true,
 /// and keeps the connection open when [socketAccepts] is true (simulating a
@@ -247,6 +247,46 @@ void main() {
 
     final unknown = await resolveModuleAddresses('no-such-host.invalid');
     expect(unknown, isEmpty);
+  });
+
+  test('resolveModuleAddress returns the IPv4 to cache on the module', () async {
+    // An IP literal is returned as-is (nothing to resolve).
+    expect(await resolveModuleAddress('192.168.1.50'), '192.168.1.50');
+    expect(isLiteralIpAddress('192.168.1.50'), isTrue);
+    expect(isLiteralIpAddress('fe80::1'), isTrue);
+    expect(isLiteralIpAddress('module.example.com'), isFalse);
+
+    // A hostname resolves to its IPv4 address, which is what gets cached.
+    expect(await resolveModuleAddress('localhost'), '127.0.0.1');
+
+    expect(await resolveModuleAddress('no-such-host.invalid'), isNull);
+  });
+
+  test('a cached IP is dialled instead of re-resolving the hostname',
+      () async {
+    final device = await _FakeApiDevice.start();
+    final store = ModuleStore.forTesting();
+    // The hostname is deliberately bogus: only the cached IP may be used.
+    final module = DeviceModule(
+      id: 'cached',
+      name: 'Cached',
+      type: ModuleType.relay,
+      ipAddress: 'no-such-host.invalid',
+      resolvedIp: '127.0.0.1',
+      status: ConnectionStatus.offline,
+      roomName: 'Remote',
+      internalTempC: 25,
+      tcpPort: device.port,
+      connectionType: 'remote',
+    );
+    await store.replaceAll([module]);
+    expect(module.host, '127.0.0.1');
+
+    final service = ModuleApiHealthService.forTesting(store: store);
+    expect(await service.checkOne(module), ConnectionStatus.online,
+        reason: 'connections must use the cached IP, never the hostname');
+
+    await device.close();
   });
 
   test('checkAll checks every module concurrently', () async {

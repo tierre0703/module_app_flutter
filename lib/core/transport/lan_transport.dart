@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
-import '../../services/module_status/module_host_resolver.dart';
+import '../../services/module_host_resolver.dart';
 import '../logger/network_debug_logger.dart';
 import 'app_command.dart';
 import 'transport.dart';

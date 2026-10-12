@@ -2,10 +2,13 @@
 //
 // Small reusable UI building blocks shared by several screens, kept in one
 // file to avoid duplicating the same layout code across the prototype.
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
 import '../models/models.dart';
+import '../services/module_host_resolver.dart';
 import '../services/module_status/module_status_service.dart';
 import '../services/module_store.dart';
 import '../theme/app_theme.dart';
@@ -272,10 +275,57 @@ Future<String?> showTextInputDialog(
   return (result == null || result.isEmpty) ? null : result;
 }
 
-/// Dialog editing a module's identity (name, IP address, TCP port, type,
+/// Resolves a module's *reachable endpoint*.
+///
+/// A module's [DeviceModule.ipAddress] holds whatever the user entered: a
+/// literal IPv4/IPv6 address, or a hostname (remote mode). Hostnames are
+/// resolved to an IPv4 address and CACHED on [DeviceModule.resolvedIp]; all TCP
+/// paths dial the cached IP ([DeviceModule.host]), so no DNS lookup happens on
+/// connection. The cache is refreshed only when the app first loads, when a
+/// module is added, and when a module is edited.
+abstract final class ModuleAddressResolver {
+  /// True when [host] is a literal IP address (nothing to resolve).
+  static bool isLiteralIp(String host) =>
+      InternetAddress.tryParse(host.trim()) != null;
+
+  /// Resolves [module]'s hostname to an IPv4 address and stores it in
+  /// [DeviceModule.resolvedIp]. IP literals clear the cache (the address itself
+  /// is used). Returns the resolved IP, or null when a hostname does not
+  /// resolve (the previous cache is kept so the module still has an endpoint).
+  static Future<String?> resolve(DeviceModule module,
+      {String debugTag = 'ModuleAddressResolver'}) async {
+    final host = module.ipAddress.trim();
+    if (isLiteralIp(host)) {
+      module.resolvedIp = null;
+      return host;
+    }
+    final addresses =
+        await resolveModuleAddresses(host, debugTag: debugTag);
+    if (addresses.isEmpty) {
+      debugPrint('$debugTag: "$host" did not resolve; keeping the previous '
+          'address ${module.resolvedIp ?? '(none)'} for ${module.name}');
+      return module.resolvedIp;
+    }
+    module.resolvedIp = addresses.first.address;
+    debugPrint('$debugTag: "$host" -> ${module.resolvedIp} for ${module.name}');
+    return module.resolvedIp;
+  }
+
+  /// Resolves every module in [modules] that has not been resolved yet. Used on
+  /// app launch so the cached IP is ready before the first connection.
+  static Future<void> resolveAll(Iterable<DeviceModule> modules,
+      {String debugTag = 'ModuleAddressResolver'}) async {
+    for (final module in modules) {
+      if (module.resolvedIp != null) continue;
+      await resolve(module, debugTag: debugTag);
+    }
+  }
+}
+
+/// Dialog editing a module's identity (name, address, TCP port, type,
 /// connection type) in place. Returns true when the user saved; the passed
 /// [module] is updated directly and the edit is persisted + pushed into the
-/// running status/heartbeat services.
+/// running status services.
 Future<bool> showEditModuleInfoDialog(
     BuildContext context, DeviceModule module) async {
   final result = await showDialog<ModuleInfoResult>(
@@ -297,12 +347,13 @@ Future<bool> showEditModuleInfoDialog(
       module.tempMaxC = tempThreshold.clamp(0, 100);
     }
 
-    // Persist the edit and reflect the new port in the running services:
-    // commit() notifies the heartbeat monitor (which rebuilds its target set),
-    // and refreshOne() re-probes the module over the changed Control API /
-    // legacy port so the new port takes effect immediately. The Control API
-    // port follows the TCP port (`apiPort ?? tcpPort`); the heartbeat port is
-    // the fixed well-known 5007 unless the module advertised another one.
+    // The address may have changed: re-resolve a hostname once, here, so the
+    // cached IP is fresh before the services reconnect (no DNS on connect).
+    await ModuleAddressResolver.resolve(module);
+
+    // Persist the edit and reflect the new endpoint in the running services:
+    // commit() notifies the status services, and refreshOne() re-probes the
+    // module over the changed address/port so it takes effect immediately.
     await ModuleStore.shared.commit();
     await ModuleStatusService.shared.refreshOne(module);
   }
@@ -478,8 +529,18 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
             TextField(
               controller: _ipController,
               decoration: InputDecoration(
-                  labelText: AppLocalizations.of(context).ipAddress,
-                  prefixIcon: const Icon(Icons.lan_outlined)),
+                  labelText: _connectionType == 'remote'
+                      ? AppLocalizations.of(context).addModuleAddressOrHostname
+                      : AppLocalizations.of(context).ipAddress,
+                  hintText: _connectionType == 'remote'
+                      ? 'module.example.com'
+                      : '192.168.1.120',
+                  helperText: _connectionType == 'remote'
+                      ? AppLocalizations.of(context).addModuleHostnameHelp
+                      : null,
+                  prefixIcon: Icon(_connectionType == 'remote'
+                      ? Icons.dns_outlined
+                      : Icons.lan_outlined)),
             ),
             const SizedBox(height: 12),
             TextField(

@@ -479,6 +479,7 @@ class DeviceModule {
     this.serial,
     this.mac,
     this.connectionType = 'local_network',
+    this.resolvedIp,
     this.apiPort,
     this.apiHttpPort,
     this.apiVersion,
@@ -494,7 +495,20 @@ class DeviceModule {
   final String id;
   String name;
   ModuleType type;
+
+  /// What the user entered: a literal IPv4/IPv6 address, or a hostname
+  /// (remote mode). Shown in the UI.
   String ipAddress;
+
+  /// Cached IPv4 address a hostname in [ipAddress] resolved to. Resolved once
+  /// when the app loads, when a module is added and when a module is edited (see
+  /// `ModuleAddressResolver`), so TCP connections never trigger a DNS lookup.
+  /// Null when [ipAddress] is a literal IP (or has not been resolved yet).
+  String? resolvedIp;
+
+  /// The address TCP connections dial: the cached [resolvedIp] when the module
+  /// is addressed by hostname, otherwise [ipAddress] itself.
+  String get host => resolvedIp ?? ipAddress;
 
   /// Firmware/build reported by the module (e.g. `AT+VER` → `VER:`).
   String? firmware;
@@ -580,6 +594,7 @@ class DeviceModule {
         'name': name,
         'type': type.name,
         'ipAddress': ipAddress,
+        'resolvedIp': resolvedIp,
         'tcpPort': tcpPort,
         'status': status.name,
         'roomName': roomName,
@@ -606,6 +621,7 @@ class DeviceModule {
         name: json['name'] as String,
         type: ModuleType.values.byName(json['type'] as String),
         ipAddress: json['ipAddress'] as String,
+        resolvedIp: json['resolvedIp'] as String?,
         tcpPort: DeviceModule._migratedTcpPort(json['tcpPort']),
         status: _connectionStatusFromJson(json['status']),
         roomName: json['roomName'] as String? ?? 'Unassigned',

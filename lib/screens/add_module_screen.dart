@@ -4,9 +4,9 @@
 // discovery message that the app can pick up (see ModuleDiscovery, which
 // implements the Soleux UDP discovery protocol in
 // doc/Soleux-Network-Discovery-and-DCP.md §1), and are otherwise
-// identified / added manually by IP address. Selecting or
-// submitting a module simply returns it to the Configuration screen via
-// `Navigator.pop`.
+// identified / added manually by IP address or, in remote mode, by hostname.
+// Selecting or submitting a module simply returns it to the Configuration
+// screen via `Navigator.pop`.
 //
 // The discovered list supports batch addition: a long press enters selection
 // mode (cards become checkable), the "Add selected" action stays disabled
@@ -18,6 +18,7 @@ import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
 import '../core/discovery/module_discovery.dart';
 import '../models/models.dart';
+import '../services/module_host_resolver.dart';
 import '../services/module_store.dart';
 import '../services/settings_store.dart';
 import '../theme/app_theme.dart';
@@ -40,6 +41,9 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
   final Set<String> _selected = <String>{};
 
   final ModuleDiscovery _discovery = ModuleDiscovery();
+
+  /// True while a manually entered hostname is being resolved (remote mode).
+  bool _resolvingAddress = false;
 
   final _nameController = TextEditingController();
   final _ipController = TextEditingController();
@@ -252,6 +256,34 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
       );
       return;
     }
+    _addManualAsync();
+  }
+
+  /// Adds the manually entered module. In remote mode the address may be a
+  /// hostname: it is resolved to an IPv4 address once, here, and cached on the
+  /// module ([DeviceModule.resolvedIp]) so no lookup happens per connection.
+  Future<void> _addManualAsync() async {
+    final l10n = AppLocalizations.of(context);
+    final entered = _ipController.text.trim();
+    final isRemote = _connectionType == 'remote';
+
+    String? resolvedIp;
+    final needsLookup = isRemote && !isLiteralIpAddress(entered);
+    if (needsLookup) {
+      setState(() => _resolvingAddress = true);
+      resolvedIp = await resolveModuleAddress(entered,
+          debugTag: 'AddModuleScreen');
+      if (!mounted) return;
+      setState(() => _resolvingAddress = false);
+      if (resolvedIp == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(l10n.addModuleResolveFailed(entered))),
+        );
+        return;
+      }
+    }
+
+    if (!mounted) return;
     final module = DeviceModule(
       id: 'manual-${DateTime.now().millisecondsSinceEpoch}',
       name: _nameController.text.trim().isEmpty
@@ -259,16 +291,17 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
           : _nameController.text.trim(),
       type: _manualType,
       connectionType: _connectionType,
-      ipAddress: _ipController.text.trim(),
+      ipAddress: entered,
+      resolvedIp: resolvedIp,
       tcpPort: int.tryParse(_tcpPortController.text.trim()) ?? 5008,
       // A manually entered address has not been verified reachable yet: seed
-      // it offline and let the heartbeat/probe confirm it online. Seeding
+      // it offline and let the API health check confirm it online. Seeding
       // online here would show a module as reachable even when it is not.
       status: ConnectionStatus.offline,
-      roomName: AppLocalizations.of(context).unassigned,
+      roomName: l10n.unassigned,
       internalTempC: 25,
       tempMaxC: _temperatureThreshold(),
-      channels: _defaultChannelsFor(_manualType, AppLocalizations.of(context)),
+      channels: _defaultChannelsFor(_manualType, l10n),
     );
     Navigator.of(context).pop(<DeviceModule>[module]);
   }
@@ -495,9 +528,18 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
             TextField(
               controller: _ipController,
               decoration: InputDecoration(
-                  labelText: l10n.ipAddress,
-                  hintText: '192.168.1.120',
-                  prefixIcon: const Icon(Icons.lan_outlined)),
+                  labelText: _connectionType == 'remote'
+                      ? l10n.addModuleAddressOrHostname
+                      : l10n.ipAddress,
+                  hintText: _connectionType == 'remote'
+                      ? 'module.example.com'
+                      : '192.168.1.120',
+                  helperText: _connectionType == 'remote'
+                      ? l10n.addModuleHostnameHelp
+                      : null,
+                  prefixIcon: Icon(_connectionType == 'remote'
+                      ? Icons.dns_outlined
+                      : Icons.lan_outlined)),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -533,9 +575,16 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
             ),
             const SizedBox(height: 20),
             FilledButton.icon(
-                onPressed: _addManual,
-                icon: const Icon(Icons.add),
-                label: Text(l10n.addModuleAddAction)),
+                onPressed: _resolvingAddress ? null : _addManual,
+                icon: _resolvingAddress
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2.2))
+                    : const Icon(Icons.add),
+                label: Text(_resolvingAddress
+                    ? l10n.addModuleResolvingAddress
+                    : l10n.addModuleAddAction)),
           ],
         ),
       ),
