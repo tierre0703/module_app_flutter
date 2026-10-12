@@ -66,7 +66,7 @@ Ast: `✅` implemented · `🟡` partial (notes follow) · `❌` not implemented
   - [x] ✅ Momentary mode
   - [x] ✅ Toggle mode
   - [x] ✅ Associated mode (linked to a channel name; scenario binding shows as `<name> (scenario)` label)
-  - [x] ✅ Enable/disable state — a disabled input stays visible on the module screen (greyed out, with a `Disabled` badge and an inert press button) and is never offered as a scenario/automation target.
+  - [x] ✅ Enable/disable state — each input card carries a toggle switch that shows and changes the input's state in place (pushing `set_input_configuration`); a disabled input stays visible on the module screen (greyed out, with an inert press button) and is never offered as a scenario/automation target.
 - [x] 🟡 Physical-input → scenario binding — represented in the dropdown only; no scheduler reacts when the input changes state.
 
 ### 2.3 Extended Control Types (Dedicated Modules)

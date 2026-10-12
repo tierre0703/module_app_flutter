@@ -381,7 +381,6 @@
   "relayOutput": "Ieșire {number}",
   "relayInputSummary": "{mode} · legat la {target}",
   "moduleInputs": "Intrări ({count})",
-  "moduleInputDisabled": "Dezactivată",
   "inputHoldToActivate": "Apăsați și mențineți",
 
   "systemLogTooltip": "Jurnal sistem",

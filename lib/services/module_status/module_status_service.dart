@@ -660,8 +660,13 @@ class ModuleStatusService {
 
   /// Saves an input's configuration (`set_input_configuration`, Control API
   /// spec §3.3): its display [name], [enabled] flag (whether it shows up in
-  /// the module screen) and behaviour [mode]. Returns whether the module
-  /// accepted the change.
+  /// the module screen) and behaviour [mode].
+  ///
+  /// The command is sent on the persistent Control API unit when there is one
+  /// and, when the module is configured for it, over the HTTP/HTTPS endpoint;
+  /// if neither session is live a one-shot Control API command is sent so the
+  /// module is always told about the change. Returns whether the module
+  /// accepted it (false when the module is unreachable).
   Future<bool> updateInputConfiguration(
     String moduleId,
     int index, {
@@ -669,25 +674,101 @@ class ModuleStatusService {
     bool? enabled,
     InputMode? mode,
   }) async {
-    final unit = jsonCommandServiceFor(moduleId);
-    if (unit == null || !unit.isConnected) return false;
+    final params = <String, dynamic>{
+      if (name != null) 'name': name,
+      if (enabled != null) 'enabled': enabled,
+      if (mode != null) 'mode': mode.name,
+    };
+    return _sendInputConfiguration(moduleId, index, params);
+  }
+
+  /// Dispatches `set_input_configuration` for input [index] with [params]
+  /// (excluding `channel`, which is added on the wire).
+  Future<bool> _sendInputConfiguration(
+      String moduleId, int index, Map<String, dynamic> params) async {
+    // A live Control API session (persistent TCP socket or the HTTP/HTTPS
+    // endpoint unit) sends the command directly.
+    final unit = _controlApiUnit(moduleId);
+    if (unit != null && unit.isConnected) {
+      return _inputConfigurationResponse(
+          await _trySetInputConfiguration(unit, moduleId, index, params));
+    }
+    // No live session: send a one-shot Control API command so the change still
+    // reaches the module (mirrors the reachability probe's transport choice).
+    final module = store.byId(moduleId);
+    if (module == null) return false;
+    final oneShot = await _sendOneShotInputConfiguration(module, index, params);
+    if (oneShot != null) {
+      return _inputConfigurationResponse(oneShot);
+    }
+    return false;
+  }
+
+  /// Reports one `set_input_configuration` outcome; [response] is null when the
+  /// request itself could not be sent.
+  bool _inputConfigurationResponse(SoleuxJsonResponse? response) {
+    if (response == null) return false;
+    if (!response.ok) {
+      debugPrint('ModuleStatusService: set_input_configuration rejected: '
+          '${response.error?.summary}');
+    }
+    return response.ok;
+  }
+
+  /// Sends `set_input_configuration` on [unit]; null when the request failed.
+  Future<SoleuxJsonResponse?> _trySetInputConfiguration(
+      SoleuxControlApiService unit,
+      String moduleId,
+      int index,
+      Map<String, dynamic> params) async {
     try {
-      final response = await unit.setInputConfiguration(index, {
-        if (name != null) 'name': name,
-        if (enabled != null) 'enabled': enabled,
-        if (mode != null) 'mode': mode.name,
-      });
-      if (!response.ok) {
-        debugPrint('ModuleStatusService: set_input_configuration '
-            '($index) on $moduleId rejected: ${response.error?.summary}');
-      }
-      return response.ok;
+      return await unit.setInputConfiguration(index, params);
     } catch (e, st) {
       debugPrint('ModuleStatusService: set_input_configuration '
           '($index) on $moduleId failed: $e\n$st');
-      return false;
+      return null;
     }
   }
+
+  /// Sends `set_input_configuration` as a single request on the module's
+  /// Control API (persistent TCP unit when it is configured but idle, or a
+  /// one-shot HTTP POST / temporary socket). Returns the decoded response, or
+  /// null when the command could not be sent at all.
+  Future<SoleuxJsonResponse?> _sendOneShotInputConfiguration(
+      DeviceModule module, int index, Map<String, dynamic> params) async {
+    final mode = _commandTransport();
+    if (mode != CommandTransportMode.tcp) {
+      final unit = _ensureHttpUnit(module, mode);
+      try {
+        await unit.connect();
+        if (!unit.isConnected) return null;
+        return await _trySetInputConfiguration(unit, module.id, index, params);
+      } catch (e, st) {
+        debugPrint('ModuleStatusService: set_input_configuration '
+            '($index) on ${module.id} over HTTP failed: $e\n$st');
+        return null;
+      }
+    }
+    // TCP: reuse the configured (but idle) persistent unit so the request
+    // shares the app's normal session; only fall back to a one-shot socket
+    // when no unit exists for the module.
+    final unit = _ensureJsonUnit(module,
+        port: module.controlApiPort, framing: SoleuxJsonFraming.controlApi);
+    try {
+      await unit.connect();
+      if (!unit.isConnected) return null;
+      return await _trySetInputConfiguration(unit, module.id, index, params);
+    } catch (e, st) {
+      debugPrint('ModuleStatusService: set_input_configuration '
+          '($index) on ${module.id} over TCP failed: $e\n$st');
+      return null;
+    }
+  }
+
+  /// The live Control API unit for [moduleId] (persistent TCP socket or the
+  /// HTTP/HTTPS endpoint unit), or null when the module has none yet.
+  SoleuxControlApiService? _controlApiUnit(String moduleId) =>
+      jsonCommandServiceFor(moduleId);
 
   /// Saves an output's configuration (`set_output_configuration`, Control API
   /// spec §4.9): its display [name], [enabled] flag (whether control /

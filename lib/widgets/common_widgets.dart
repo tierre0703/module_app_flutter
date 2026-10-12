@@ -763,31 +763,38 @@ class DimmerChannelCard extends StatelessWidget {
   }
 }
 
-/// A single input field on a module screen. Tapping the card (or its edit
-/// button) opens the input configuration page ([onEdit]); the action button
-/// drives the associated virtual input (`set_virtual_input_state`): each press
-/// sends `true`, waits 100 ms, then sends `false`.
+/// A single input field on a module screen. Tapping the card body opens the
+/// input configuration page ([onEdit]). The action button drives the
+/// associated virtual input (`set_virtual_input_state`): each press sends
+/// `true`, waits 100 ms, then sends `false`.
+///
+/// The toggle switch next to it shows the input's enabled/disabled state and
+/// lets the user change it in place ([onEnabledChanged]); a disabled input is
+/// greyed out and its action button is inert, so the app never drives an input
+/// the user turned off - but the input stays visible on the module screen.
 ///
 /// A press is ignored while a previous press's `false` command is still
 /// awaiting its response, so rapid repeats never pile up on the transport.
 /// After the `false` response arrives, [onReleased] fires so the caller can
 /// re-fetch module info and refresh the input/output state shown on screen.
-///
-/// A disabled input ([PhysicalInput.enabled] false) stays visible - it is not
-/// hidden - but is greyed out, shows a "Disabled" badge and its action button
-/// is inert, so the app never drives an input the user turned off.
 class InputFieldCard extends StatefulWidget {
   const InputFieldCard({
     super.key,
     required this.input,
     required this.onHoldChanged,
     required this.onEdit,
+    this.onEnabledChanged,
     this.onReleased,
   });
 
   final PhysicalInput input;
   final Future<void> Function(bool) onHoldChanged;
   final VoidCallback onEdit;
+
+  /// Reports a new enabled/disabled state when the toggle switch is flipped.
+  /// Null leaves the switch display-only.
+  final ValueChanged<bool>? onEnabledChanged;
+
   final VoidCallback? onReleased;
 
   @override
@@ -818,7 +825,6 @@ class _InputFieldCardState extends State<InputFieldCard> {
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final scheme = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context);
     final bool enabled = widget.input.enabled;
     // Disabled inputs are dimmed to signal they cannot be operated.
     final double dim = enabled ? 1 : 0.45;
@@ -837,7 +843,7 @@ class _InputFieldCardState extends State<InputFieldCard> {
                   child: Row(
                     children: [
                       Icon(
-                        Icons.toggle_on_outlined,
+                        Icons.touch_app_outlined,
                         size: 28,
                         color: (widget.input.state
                                 ? scheme.primary
@@ -878,26 +884,6 @@ class _InputFieldCardState extends State<InputFieldCard> {
                                           fontSize: 10,
                                           fontWeight: FontWeight.w800,
                                           color: scheme.onPrimary),
-                                    ),
-                                  ),
-                                ],
-                                if (!enabled) ...[
-                                  const SizedBox(width: 6),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 6, vertical: 1),
-                                    decoration: BoxDecoration(
-                                      color: onSurface
-                                          .withValues(alpha: 0.15),
-                                      borderRadius: BorderRadius.circular(9),
-                                    ),
-                                    child: Text(
-                                      l10n.moduleInputDisabled,
-                                      style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w700,
-                                          color: onSurface.withValues(
-                                              alpha: 0.75)),
                                     ),
                                   ),
                                 ],
@@ -947,10 +933,10 @@ class _InputFieldCardState extends State<InputFieldCard> {
                 ),
               ),
             ),
-            IconButton(
-              tooltip: l10n.inputEditorEditTitle,
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: widget.onEdit,
+            const SizedBox(width: 4),
+            Switch(
+              value: enabled,
+              onChanged: widget.onEnabledChanged,
             ),
           ],
         ),

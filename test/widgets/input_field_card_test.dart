@@ -1,6 +1,8 @@
 // Tests for the module-screen input card behaviour: a disabled input stays
-// visible (greyed out with a "Disabled" badge) instead of being hidden, it
-// exposes an edit button, and it never dispatches a virtual-input command.
+// visible (greyed out) instead of being hidden, the toggle switch shows and
+// changes the enabled/disabled state in place, tapping the card body opens the
+// editor (there is no separate edit icon), and a disabled input never
+// dispatches a virtual-input command.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
@@ -19,6 +21,7 @@ Future<void> _pump(
   PhysicalInput input, {
   required Future<void> Function(bool) onHoldChanged,
   VoidCallback? onEdit,
+  ValueChanged<bool>? onEnabledChanged,
 }) async {
   await tester.pumpWidget(MaterialApp(
     localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -28,6 +31,7 @@ Future<void> _pump(
         input: input,
         onHoldChanged: onHoldChanged,
         onEdit: onEdit ?? () {},
+        onEnabledChanged: onEnabledChanged,
       ),
     ),
   ));
@@ -46,7 +50,7 @@ void main() {
 
     expect(calls, [true, false],
         reason: 'a press drives the virtual input true then false');
-    expect(find.text('Disabled'), findsNothing);
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
   });
 
   testWidgets('a disabled input stays visible, shows the state and is inert',
@@ -57,7 +61,7 @@ void main() {
 
     // Still rendered - not hidden from the module screen.
     expect(find.text('Switch 1'), findsOneWidget);
-    expect(find.text('Disabled'), findsOneWidget);
+    expect(tester.widget<Switch>(find.byType(Switch)).value, isFalse);
 
     await tester.tap(find.byIcon(Icons.play_arrow));
     await tester.pumpAndSettle();
@@ -66,14 +70,28 @@ void main() {
         reason: 'a disabled input must not be operable from the app');
   });
 
-  testWidgets('the edit button opens the input configuration',
+  testWidgets('the toggle switch reports a new enabled state', (tester) async {
+    final changes = <bool>[];
+    await _pump(tester, _input(enabled: true),
+        onHoldChanged: (_) async {}, onEnabledChanged: changes.add);
+
+    await tester.tap(find.byType(Switch));
+    await tester.pump();
+
+    expect(changes, [false],
+        reason: 'flipping the switch reports the input must be disabled');
+  });
+
+  testWidgets('tapping the card body opens the editor and has no edit icon',
       (tester) async {
     var edits = 0;
-    final input = _input(enabled: false);
-    await _pump(tester, input,
+    await _pump(tester, _input(enabled: false),
         onHoldChanged: (_) async {}, onEdit: () => edits++);
 
-    await tester.tap(find.byIcon(Icons.edit_outlined));
+    // The separate edit icon was replaced by the toggle switch.
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+
+    await tester.tap(find.text('Switch 1'));
     await tester.pump();
 
     expect(edits, 1);

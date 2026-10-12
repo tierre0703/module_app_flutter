@@ -310,6 +310,89 @@ void main() {
     await fake.server.close();
   });
 
+  test('set_input_configuration pushes channel, name and enabled', () async {
+    final fake = await _FakeDevice.start();
+    final store = ModuleStore.forTesting();
+    final module = DeviceModule(
+      id: 'm-in-cfg',
+      name: 'Relays',
+      type: ModuleType.relay,
+      ipAddress: '127.0.0.1',
+      status: ConnectionStatus.offline,
+      roomName: 'Room',
+      internalTempC: 30,
+      tcpPort: fake.port,
+    );
+    await store.replaceAll([module]);
+
+    final service = ModuleStatusService(store: store);
+    expect(await service.refreshOne(module), isTrue);
+    await _flush();
+
+    expect(
+      await service.updateInputConfiguration('m-in-cfg', 0,
+          name: 'Input 1', enabled: true),
+      isTrue,
+    );
+    await _flush();
+
+    final sent = fake.received.last;
+    expect(sent, contains('"action":"set_input_configuration"'));
+    expect(sent, contains('"channel":0'));
+    expect(sent, contains('"name":"Input 1"'));
+    expect(sent, contains('"enabled":true'));
+
+    // Disabling the input reaches the module the same way.
+    expect(
+      await service.updateInputConfiguration('m-in-cfg', 1,
+          name: 'Input 2', enabled: false),
+      isTrue,
+    );
+    await _flush();
+    final disabled = fake.received.last;
+    expect(disabled, contains('"channel":1'));
+    expect(disabled, contains('"enabled":false'));
+
+    service.dispose();
+    await fake.server.close();
+  });
+
+  test('set_input_configuration is sent on a one-shot session when the module '
+      'has no live Control API unit', () async {
+    final fake = await _FakeDevice.start();
+    final store = ModuleStore.forTesting();
+    final module = DeviceModule(
+      id: 'm-in-oneshot',
+      name: 'Relays',
+      type: ModuleType.relay,
+      ipAddress: '127.0.0.1',
+      status: ConnectionStatus.offline,
+      roomName: 'Room',
+      internalTempC: 30,
+      tcpPort: fake.port,
+    );
+    await store.replaceAll([module]);
+
+    // No refreshOne: nothing has opened a session for the module yet.
+    final service = ModuleStatusService(store: store);
+    expect(service.jsonCommandServiceFor('m-in-oneshot'), isNull);
+
+    expect(
+      await service.updateInputConfiguration('m-in-oneshot', 0,
+          name: 'Input 1', enabled: false),
+      isTrue,
+    );
+    await _flush();
+
+    expect(fake.received, isNotEmpty,
+        reason: 'the command must still reach the module');
+    expect(fake.received.last, contains('"action":"set_input_configuration"'));
+    expect(fake.received.last, contains('"enabled":false'));
+
+    service.dispose();
+    await fake.server.close();
+  });
+
   test('set_output_configuration omits initial_state for Last State', () async {
     final fake = await _FakeDevice.start();
     final store = ModuleStore.forTesting();

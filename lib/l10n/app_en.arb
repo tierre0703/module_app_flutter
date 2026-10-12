@@ -411,7 +411,6 @@
   "@relayInputSummary": {"placeholders": {"mode": {"type": "String"}, "target": {"type": "String"}}},
   "moduleInputs": "Inputs ({count})",
   "@moduleInputs": {"placeholders": {"count": {"type": "int"}}},
-  "moduleInputDisabled": "Disabled",
   "inputHoldToActivate": "Hold to act",
 
   "systemLogTooltip": "System log",
