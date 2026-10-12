@@ -101,6 +101,15 @@ class ScenarioRunner {
         detail: 'Input "${action.inputName}" not found on ${module.name}',
       );
     }
+    // A disabled input is not controllable from anywhere in the app, even if a
+    // scenario still references it.
+    if (action.isInputAction && !module.inputs[inputIndex].enabled) {
+      return ScenarioActionResult(
+        description: description,
+        success: false,
+        detail: 'Input "${action.inputName}" is disabled on ${module.name}',
+      );
+    }
 
     final service = ModuleStatusService.shared;
     final protocol = service.commandProtocolFor(module.id);

@@ -238,7 +238,8 @@ class AutomationScheduler {
   bool? _resolveWatchOn(Automation a) {
     if (a.watchIsInput) {
       final input = _resolveInput(a.watchModuleName, a.watchInputName);
-      if (input == null) return null;
+      // A disabled input is not watched anywhere in the app.
+      if (input == null || !input.enabled) return null;
       return input.state;
     }
     final channel = _resolveChannel(a.watchModuleName, a.watchChannelName);

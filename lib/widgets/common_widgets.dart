@@ -763,15 +763,19 @@ class DimmerChannelCard extends StatelessWidget {
   }
 }
 
-/// A single input field on a module screen. Tapping the card opens the input
-/// configuration page ([onEdit]); the action button drives the associated
-/// virtual input (`set_virtual_input_state`): each press sends `true`, waits
-/// 100 ms, then sends `false`.
+/// A single input field on a module screen. Tapping the card (or its edit
+/// button) opens the input configuration page ([onEdit]); the action button
+/// drives the associated virtual input (`set_virtual_input_state`): each press
+/// sends `true`, waits 100 ms, then sends `false`.
 ///
 /// A press is ignored while a previous press's `false` command is still
 /// awaiting its response, so rapid repeats never pile up on the transport.
 /// After the `false` response arrives, [onReleased] fires so the caller can
 /// re-fetch module info and refresh the input/output state shown on screen.
+///
+/// A disabled input ([PhysicalInput.enabled] false) stays visible - it is not
+/// hidden - but is greyed out, shows a "Disabled" badge and its action button
+/// is inert, so the app never drives an input the user turned off.
 class InputFieldCard extends StatefulWidget {
   const InputFieldCard({
     super.key,
@@ -798,9 +802,10 @@ class _InputFieldCardState extends State<InputFieldCard> {
   /// Fires a single press action: drives the virtual input `true`, waits
   /// [_pressDelayMs], then drives it `false`. The button stays locked
   /// ([_busy]) until the `false` command's response arrives, so the next
-  /// press is ignored while one is still in flight.
+  /// press is ignored while one is still in flight. Disabled inputs never
+  /// dispatch.
   Future<void> _fire() async {
-    if (_busy) return;
+    if (_busy || !widget.input.enabled) return;
     setState(() => _busy = true);
     await widget.onHoldChanged(true);
     await Future<void>.delayed(const Duration(milliseconds: _pressDelayMs));
@@ -813,6 +818,10 @@ class _InputFieldCardState extends State<InputFieldCard> {
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final scheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final bool enabled = widget.input.enabled;
+    // Disabled inputs are dimmed to signal they cannot be operated.
+    final double dim = enabled ? 1 : 0.45;
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -830,9 +839,10 @@ class _InputFieldCardState extends State<InputFieldCard> {
                       Icon(
                         Icons.toggle_on_outlined,
                         size: 28,
-                        color: widget.input.state
-                            ? scheme.primary
-                            : onSurface.withValues(alpha: 0.6),
+                        color: (widget.input.state
+                                ? scheme.primary
+                                : onSurface.withValues(alpha: 0.6))
+                            .withValues(alpha: dim),
                       ),
                       const SizedBox(width: 8),
                       Expanded(
@@ -845,9 +855,11 @@ class _InputFieldCardState extends State<InputFieldCard> {
                               children: [
                                 Flexible(
                                   child: Text(widget.input.name,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                           fontWeight: FontWeight.w700,
-                                          fontSize: 16),
+                                          fontSize: 16,
+                                          color:
+                                              onSurface.withValues(alpha: dim)),
                                       overflow: TextOverflow.ellipsis),
                                 ),
                                 if (widget.input.state) ...[
@@ -856,7 +868,8 @@ class _InputFieldCardState extends State<InputFieldCard> {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 6),
                                     decoration: BoxDecoration(
-                                      color: scheme.primary,
+                                      color: scheme.primary
+                                          .withValues(alpha: dim),
                                       borderRadius: BorderRadius.circular(9),
                                     ),
                                     child: Text(
@@ -868,6 +881,26 @@ class _InputFieldCardState extends State<InputFieldCard> {
                                     ),
                                   ),
                                 ],
+                                if (!enabled) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 6, vertical: 1),
+                                    decoration: BoxDecoration(
+                                      color: onSurface
+                                          .withValues(alpha: 0.15),
+                                      borderRadius: BorderRadius.circular(9),
+                                    ),
+                                    child: Text(
+                                      l10n.moduleInputDisabled,
+                                      style: TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w700,
+                                          color: onSurface.withValues(
+                                              alpha: 0.75)),
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
                             const SizedBox(height: 2),
@@ -875,7 +908,8 @@ class _InputFieldCardState extends State<InputFieldCard> {
                               widget.input.mode.label,
                               style: TextStyle(
                                   fontSize: 12,
-                                  color: onSurface.withValues(alpha: 0.55)),
+                                  color: onSurface
+                                      .withValues(alpha: 0.55 * dim)),
                             ),
                           ],
                         ),
@@ -888,22 +922,35 @@ class _InputFieldCardState extends State<InputFieldCard> {
             const SizedBox(width: 8),
             Listener(
               behavior: HitTestBehavior.opaque,
-              onPointerDown: (_) => _fire(),
+              onPointerDown: enabled ? (_) => _fire() : null,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 120),
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: _busy ? scheme.primary : scheme.secondaryContainer,
+                  color: !enabled
+                      ? onSurface.withValues(alpha: 0.08)
+                      : _busy
+                          ? scheme.primary
+                          : scheme.secondaryContainer,
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
                 child: Icon(
                   Icons.play_arrow,
                   size: 28,
-                  color: _busy ? scheme.onPrimary : scheme.onSecondaryContainer,
+                  color: !enabled
+                      ? onSurface.withValues(alpha: 0.35)
+                      : _busy
+                          ? scheme.onPrimary
+                          : scheme.onSecondaryContainer,
                 ),
               ),
+            ),
+            IconButton(
+              tooltip: l10n.inputEditorEditTitle,
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: widget.onEdit,
             ),
           ],
         ),

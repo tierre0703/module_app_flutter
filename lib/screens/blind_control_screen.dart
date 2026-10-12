@@ -130,21 +130,20 @@ class _BlindControlScreenState extends State<BlindControlScreen> {
                       onDown: () => _press(channel, _Motion.down),
                     ),
                   ),
-                if (module.inputs.any((i) => i.enabled)) ...[
+                if (module.inputs.isNotEmpty) ...[
                   const SizedBox(height: 24),
                   SectionHeader(l10n.moduleInputs(module.inputs.length)),
                   for (int i = 0; i < module.inputs.length; i++)
-                    if (module.inputs[i].enabled)
-                      Padding(
-                        padding: const EdgeInsets.only(
-                            bottom: AppSpacing.betweenCards),
-                        child: InputFieldCard(
-                          input: module.inputs[i],
-                          onHoldChanged: (held) => _holdInput(module, i, held),
-                          onReleased: _refresh,
-                          onEdit: () => _editInput(module.inputs[i], i),
-                        ),
+                    Padding(
+                      padding: const EdgeInsets.only(
+                          bottom: AppSpacing.betweenCards),
+                      child: InputFieldCard(
+                        input: module.inputs[i],
+                        onHoldChanged: (held) => _holdInput(module, i, held),
+                        onReleased: _refresh,
+                        onEdit: () => _editInput(module.inputs[i], i),
                       ),
+                    ),
                 ],
               ],
             ),

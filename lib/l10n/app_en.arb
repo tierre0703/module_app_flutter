@@ -411,6 +411,7 @@
   "@relayInputSummary": {"placeholders": {"mode": {"type": "String"}, "target": {"type": "String"}}},
   "moduleInputs": "Inputs ({count})",
   "@moduleInputs": {"placeholders": {"count": {"type": "int"}}},
+  "moduleInputDisabled": "Disabled",
   "inputHoldToActivate": "Hold to act",
 
   "systemLogTooltip": "System log",
@@ -487,10 +488,11 @@
 
   "inputEditorOnModule": "On module: {name}",
   "@inputEditorOnModule": {"placeholders": {"name": {"type": "String"}}},
+  "inputEditorEditTitle": "Edit input",
   "inputEditorBehavior": "Behavior",
   "inputEditorName": "Name",
   "inputEditorEnabled": "Enabled",
-  "inputEditorEnabledHint": "When enabled, this input is shown on the module screen.",
+  "inputEditorEnabledHint": "When disabled, this input is not shown in scenarios and automations and cannot be operated on the module screen.",
   "inputEditorBehaviorHint": "Press-and-hold always pulses the virtual input; this behaviour applies to the mapped physical input.",
   "inputEditorBoundTarget": "Bound target",
   "inputEditorOutputScenarioLabel": "Output or scenario",

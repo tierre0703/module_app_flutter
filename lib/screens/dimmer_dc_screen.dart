@@ -126,21 +126,20 @@ class _DimmerDcScreenState extends State<DimmerDcScreen> {
                   onEditChannel: (index) =>
                       _editChannel(live.channels[index], index),
                 ),
-                if (live.inputs.any((i) => i.enabled)) ...[
+                if (live.inputs.isNotEmpty) ...[
                   const SizedBox(height: 24),
                   SectionHeader(l10n.moduleInputs(live.inputs.length)),
                   for (int i = 0; i < live.inputs.length; i++)
-                    if (live.inputs[i].enabled)
-                      Padding(
-                        padding: const EdgeInsets.only(
-                            bottom: AppSpacing.betweenCards),
-                        child: InputFieldCard(
-                          input: live.inputs[i],
-                          onHoldChanged: (held) => _holdInput(module, i, held),
-                          onReleased: _refresh,
-                          onEdit: () => _editInput(live.inputs[i], i),
-                        ),
+                    Padding(
+                      padding: const EdgeInsets.only(
+                          bottom: AppSpacing.betweenCards),
+                      child: InputFieldCard(
+                        input: live.inputs[i],
+                        onHoldChanged: (held) => _holdInput(module, i, held),
+                        onReleased: _refresh,
+                        onEdit: () => _editInput(live.inputs[i], i),
                       ),
+                    ),
                 ],
               ],
             );
