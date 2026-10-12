@@ -299,8 +299,7 @@ abstract final class ModuleAddressResolver {
       module.resolvedIp = null;
       return host;
     }
-    final addresses =
-        await resolveModuleAddresses(host, debugTag: debugTag);
+    final addresses = await resolveModuleAddresses(host, debugTag: debugTag);
     if (addresses.isEmpty) {
       debugPrint('$debugTag: "$host" did not resolve; keeping the previous '
           'address ${module.resolvedIp ?? '(none)'} for ${module.name}');
@@ -849,15 +848,6 @@ class _InputFieldCardState extends State<InputFieldCard> {
                   padding: const EdgeInsets.symmetric(vertical: 4),
                   child: Row(
                     children: [
-                      Icon(
-                        Icons.touch_app_outlined,
-                        size: 28,
-                        color: (widget.input.state
-                                ? scheme.primary
-                                : onSurface.withValues(alpha: 0.6))
-                            .withValues(alpha: dim),
-                      ),
-                      const SizedBox(width: 8),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -881,8 +871,8 @@ class _InputFieldCardState extends State<InputFieldCard> {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 6),
                                     decoration: BoxDecoration(
-                                      color: scheme.primary
-                                          .withValues(alpha: dim),
+                                      color:
+                                          scheme.primary.withValues(alpha: dim),
                                       borderRadius: BorderRadius.circular(9),
                                     ),
                                     child: Text(
@@ -901,8 +891,8 @@ class _InputFieldCardState extends State<InputFieldCard> {
                               widget.input.mode.label,
                               style: TextStyle(
                                   fontSize: 12,
-                                  color: onSurface
-                                      .withValues(alpha: 0.55 * dim)),
+                                  color:
+                                      onSurface.withValues(alpha: 0.55 * dim)),
                             ),
                           ],
                         ),
