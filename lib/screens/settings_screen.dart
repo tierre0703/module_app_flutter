@@ -3,10 +3,10 @@
 // Brief section III "Settings Section": account, notifications, language
 // and appearance, plus a reminder that the architecture is multi-location
 // ready even though v1 manages a single location (brief section 4.2). The
-// "Command protocol" section picks the Control API transport the app uses to
-// talk to modules: the persistent TCP session on port 5008 or the stateless
-// HTTP/HTTPS POST /api/v1/command endpoint
+// "Command protocol" section shows the Control API transport the app uses to
+// talk to modules: the persistent TCP session on port 5008
 // (doc/Soleux_Control_API_Command_Specification_v0.2.md §"Transport mapping").
+// The alternative HTTP/HTTPS endpoints are listed but not selectable.
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
@@ -337,11 +337,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         secondary: const Icon(Icons.dns_outlined),
                       ),
                       const Divider(height: 1),
+                      // HTTP/HTTPS are not selectable: the Control API is only
+                      // used over the persistent TCP session.
                       RadioListTile<CommandTransportMode>(
                         value: CommandTransportMode.http,
                         title: Text(l10n.settingsCommandProtocolHttp),
                         subtitle: Text(l10n.settingsCommandProtocolHttpHint),
                         secondary: const Icon(Icons.http_outlined),
+                        enabled: false,
                       ),
                       const Divider(height: 1),
                       RadioListTile<CommandTransportMode>(
@@ -349,6 +352,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         title: Text(l10n.settingsCommandProtocolHttps),
                         subtitle: Text(l10n.settingsCommandProtocolHttpsHint),
                         secondary: const Icon(Icons.https_outlined),
+                        enabled: false,
                       ),
                     ],
                   ),

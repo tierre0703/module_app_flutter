@@ -244,6 +244,10 @@ class SettingsStore extends ChangeNotifier {
 
   /// Sets the Control API command transport (TCP 5008, HTTP 80 or HTTPS 443)
   /// and persists it. Newly-created module sessions honour the selection.
+  ///
+  /// Unused by the Settings screen, where HTTP/HTTPS are disabled and the
+  /// transport stays on [CommandTransportMode.tcp]; kept for the backup/restore
+  /// flow and a future re-enable.
   Future<void> setCommandTransport(CommandTransportMode mode) {
     _commandTransport = mode;
     return _persistAndNotify();

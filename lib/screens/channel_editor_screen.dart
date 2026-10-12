@@ -38,7 +38,6 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
   late final TextEditingController _nameController =
       TextEditingController(text: widget.channel.name);
   late IconData _selectedIcon = widget.channel.icon;
-  late bool _enabled = widget.channel.enabled;
   late OutputInitialState _initialState = widget.channel.initialState;
 
   @override
@@ -53,7 +52,6 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     // Apply to the shared channel instance, then push the config to the device.
     widget.channel.name = trimmed.isEmpty ? widget.channel.name : trimmed;
     widget.channel.icon = _selectedIcon;
-    widget.channel.enabled = _enabled;
     widget.channel.initialState = _initialState;
 
     await ModuleStore.shared.update(widget.module.id, (_) {});
@@ -61,7 +59,6 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
       widget.module.id,
       widget.index,
       name: widget.channel.name,
-      enabled: widget.channel.enabled,
       initialState: widget.channel.initialState,
     );
 
@@ -121,17 +118,6 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
                     ),
                   ),
               ],
-            ),
-            const SizedBox(height: 24),
-            SectionHeader(l10n.channelEditorBehavior),
-            Card(
-              child: SwitchListTile(
-                value: _enabled,
-                onChanged: (value) => setState(() => _enabled = value),
-                title: Text(l10n.channelEditorEnabled,
-                    style: const TextStyle(fontWeight: FontWeight.w700)),
-                subtitle: Text(l10n.channelEditorEnabledHint),
-              ),
             ),
             const SizedBox(height: 24),
             SectionHeader(l10n.channelEditorInitialState),
