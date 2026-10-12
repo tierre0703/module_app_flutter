@@ -734,11 +734,11 @@ ChannelOutput? dimmerTargetChannel(List<DeviceModule> modules,
 /// stored (a legacy saved scenario) does it fall back to matching the
 /// `"<channel> - <module>"` [targetName] format.
 (DeviceModule, int)? dimmerTargetRef(
-    List<DeviceModule> modules, {
-    int? moduleIndex,
-    int? channelIndex,
-    String targetName = '',
-  }) {
+  List<DeviceModule> modules, {
+  int? moduleIndex,
+  int? channelIndex,
+  String targetName = '',
+}) {
   if (moduleIndex != null &&
       moduleIndex >= 0 &&
       moduleIndex < modules.length &&
@@ -930,8 +930,7 @@ class Scenario {
             ScenarioAction.fromJson((a as Map).cast<String, Object?>()),
         ],
         sliderModuleIndex: (json['sliderModuleIndex'] as num?)?.toInt() ?? -1,
-        sliderChannelIndex:
-            (json['sliderChannelIndex'] as num?)?.toInt() ?? -1,
+        sliderChannelIndex: (json['sliderChannelIndex'] as num?)?.toInt() ?? -1,
         sliderTargetName: json['sliderTargetName'] as String? ?? '',
         sliderValue: json['sliderValue'] as int? ?? 0,
       );

@@ -281,8 +281,7 @@ class AutomationScheduler {
           a.watchChannelIndex < module.channels.length) {
         return a.watchChannelIndex;
       }
-      return module.channels
-          .indexWhere((c) => c.name == a.watchChannelName);
+      return module.channels.indexWhere((c) => c.name == a.watchChannelName);
     }
     if (a.watchChannelName == null) return -1;
     for (final m in modules) {

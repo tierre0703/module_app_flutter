@@ -49,8 +49,8 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   }
 
   Future<void> _addModule() async {
-    final List<DeviceModule>? added = await Navigator.of(context)
-        .push<List<DeviceModule>>(
+    final List<DeviceModule>? added =
+        await Navigator.of(context).push<List<DeviceModule>>(
       MaterialPageRoute(builder: (_) => const AddModuleScreen()),
     );
     if (added == null || added.isEmpty) return;

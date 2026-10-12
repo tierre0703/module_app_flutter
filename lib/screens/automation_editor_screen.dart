@@ -111,7 +111,9 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
   bool get _hasWatchTarget {
     final m = _selectedModule;
     if (m == null) return false;
-    return _deviceIsInput ? _inputIndices.isNotEmpty : _outputIndices.isNotEmpty;
+    return _deviceIsInput
+        ? _inputIndices.isNotEmpty
+        : _outputIndices.isNotEmpty;
   }
 
   @override
@@ -191,7 +193,8 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
       _watchInputIndex = _inputIndices.isNotEmpty ? _inputIndices.first : -1;
       _deviceInputName = _inputNameAt(m, _watchInputIndex);
     } else {
-      _watchChannelIndex = _outputIndices.isNotEmpty ? _outputIndices.first : -1;
+      _watchChannelIndex =
+          _outputIndices.isNotEmpty ? _outputIndices.first : -1;
       _deviceChannelName = _channelNameAt(m, _watchChannelIndex);
     }
   }
@@ -243,15 +246,16 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
       a.scheduleMinute =
           _triggerType == AutomationTriggerType.time ? _time.minute : null;
       final watching = _triggerType == AutomationTriggerType.deviceState;
-      a.watchModuleName = watching
-          ? (_selectedModule?.name ?? _deviceModuleName)
-          : null;
+      a.watchModuleName =
+          watching ? (_selectedModule?.name ?? _deviceModuleName) : null;
       a.watchModuleIndex = watching ? _watchModuleIndex : -1;
       a.watchIsInput = watching && _deviceIsInput;
       a.watchInputName = watching && _deviceIsInput ? _deviceInputName : null;
       a.watchInputIndex = watching && _deviceIsInput ? _watchInputIndex : -1;
-      a.watchChannelName = watching && !_deviceIsInput ? _deviceChannelName : null;
-      a.watchChannelIndex = watching && !_deviceIsInput ? _watchChannelIndex : -1;
+      a.watchChannelName =
+          watching && !_deviceIsInput ? _deviceChannelName : null;
+      a.watchChannelIndex =
+          watching && !_deviceIsInput ? _watchChannelIndex : -1;
       a.watchState = watching && _deviceTurnsOn;
       a.actions
         ..clear()
@@ -270,10 +274,9 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
         watchModuleName: _triggerType == AutomationTriggerType.deviceState
             ? (_selectedModule?.name ?? _deviceModuleName)
             : null,
-        watchModuleIndex:
-            _triggerType == AutomationTriggerType.deviceState
-                ? _watchModuleIndex
-                : -1,
+        watchModuleIndex: _triggerType == AutomationTriggerType.deviceState
+            ? _watchModuleIndex
+            : -1,
         watchIsInput:
             _triggerType == AutomationTriggerType.deviceState && _deviceIsInput,
         watchInputName:
@@ -358,8 +361,7 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                 items: [
                   for (final m in _modulesWithTargets)
                     DropdownMenuItem(
-                        value: moduleIndexOf(_modules, m),
-                        child: Text(m.name)),
+                        value: moduleIndexOf(_modules, m), child: Text(m.name)),
                 ],
                 onChanged: (v) => setState(() {
                   if (v == null) return;

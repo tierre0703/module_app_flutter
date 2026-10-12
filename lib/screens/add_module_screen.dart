@@ -271,8 +271,8 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
     final needsLookup = isRemote && !isLiteralIpAddress(entered);
     if (needsLookup) {
       setState(() => _resolvingAddress = true);
-      resolvedIp = await resolveModuleAddress(entered,
-          debugTag: 'AddModuleScreen');
+      resolvedIp =
+          await resolveModuleAddress(entered, debugTag: 'AddModuleScreen');
       if (!mounted) return;
       setState(() => _resolvingAddress = false);
       if (resolvedIp == null) {
@@ -316,21 +316,19 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
     final Widget details = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(module.name,
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+        Text(module.name, style: const TextStyle(fontWeight: FontWeight.w700)),
         const SizedBox(height: 2),
         Text(
             (module.firmware != null && module.firmware!.isNotEmpty)
                 ? l10n.addModuleFamilyMeta(module.type.label, module.firmware!)
-                : l10n.configModuleSummary(
-                    module.type.label, module.ipAddress),
+                : l10n.configModuleSummary(module.type.label, module.ipAddress),
             style: TextStyle(
                 fontSize: 12, color: onSurface.withValues(alpha: 0.55))),
         const SizedBox(height: 2),
         Text(
           module.ipAddress,
-          style: TextStyle(
-              fontSize: 11, color: onSurface.withValues(alpha: 0.45)),
+          style:
+              TextStyle(fontSize: 11, color: onSurface.withValues(alpha: 0.45)),
         ),
       ],
     );
@@ -390,8 +388,8 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
-                          tooltip: l10n.addModuleAddSelectedCount(
-                              _selected.length),
+                          tooltip:
+                              l10n.addModuleAddSelectedCount(_selected.length),
                           onPressed: _addSelected,
                           icon: const Icon(Icons.add_circle_outline),
                         ),

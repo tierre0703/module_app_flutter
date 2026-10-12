@@ -36,8 +36,8 @@ Future<ScenarioAction?> showAddActionSheet(
   final List<DeviceModule> inputModules =
       modules.where((m) => _enabledInputs(m.inputs).isNotEmpty).toList();
   final List<DeviceModule> allModules = modules
-      .where((m) =>
-          m.channels.isNotEmpty || _enabledInputs(m.inputs).isNotEmpty)
+      .where(
+          (m) => m.channels.isNotEmpty || _enabledInputs(m.inputs).isNotEmpty)
       .toList();
   // A module's position is its index in the full fleet, not in the filtered
   // [allModules] list: `indexOf` on the sublist would break whenever a module
@@ -128,8 +128,7 @@ Future<ScenarioAction?> showAddActionSheet(
                 }
               } else {
                 inputIndex = -1;
-                channelIndex =
-                    (module?.channels.isNotEmpty ?? false) ? 0 : -1;
+                channelIndex = (module?.channels.isNotEmpty ?? false) ? 0 : -1;
                 if (channelIndex < 0 && outputModules.isNotEmpty) {
                   selectModule(outputModules.first);
                   channelIndex = 0;
@@ -150,6 +149,7 @@ Future<ScenarioAction?> showAddActionSheet(
             }
             return m.channels[channelIndex];
           }
+
           final l10n = AppLocalizations.of(context);
 
           return SafeArea(
@@ -242,13 +242,15 @@ Future<ScenarioAction?> showAddActionSheet(
                         decoration: InputDecoration(
                             labelText: l10n.actionPickerOutputLabel),
                         items: [
-                          for (var c = 0; c < (module?.channels.length ?? 0); c++)
+                          for (var c = 0;
+                              c < (module?.channels.length ?? 0);
+                              c++)
                             DropdownMenuItem(
                                 value: c,
                                 child: Text(module!.channels[c].name)),
                         ],
-                        onChanged: (c) =>
-                            setSheetState(() => channelIndex = c ?? channelIndex),
+                        onChanged: (c) => setSheetState(
+                            () => channelIndex = c ?? channelIndex),
                       ),
                     const SizedBox(height: 16),
                     if (isInputTarget) ...[
@@ -309,8 +311,10 @@ Future<ScenarioAction?> showAddActionSheet(
                     FilledButton(
                       onPressed: module == null ||
                               (isInputTarget
-                                  ? inputIndex < 0 || inputIndex >= module!.inputs.length
-                                  : channelIndex < 0 || channelIndex >= module!.channels.length)
+                                  ? inputIndex < 0 ||
+                                      inputIndex >= module!.inputs.length
+                                  : channelIndex < 0 ||
+                                      channelIndex >= module!.channels.length)
                           ? null
                           : () => Navigator.pop(
                                 context,
@@ -352,8 +356,8 @@ Future<ScenarioAction?> showAddActionSheet(
 
 /// The target module for an edited action: the stored fleet index when it
 /// still resolves, otherwise (legacy) the saved module name.
-DeviceModule? _resolveModule(
-    List<DeviceModule> allModules, List<DeviceModule> fleet, ScenarioAction initial) {
+DeviceModule? _resolveModule(List<DeviceModule> allModules,
+    List<DeviceModule> fleet, ScenarioAction initial) {
   final byIndex = moduleAtIndex(fleet, initial.moduleIndex);
   if (byIndex != null && allModules.contains(byIndex)) return byIndex;
   return _matchModule(allModules, initial.moduleName) ??

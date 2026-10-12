@@ -249,7 +249,8 @@ void main() {
     expect(unknown, isEmpty);
   });
 
-  test('resolveModuleAddress returns the IPv4 to cache on the module', () async {
+  test('resolveModuleAddress returns the IPv4 to cache on the module',
+      () async {
     // An IP literal is returned as-is (nothing to resolve).
     expect(await resolveModuleAddress('192.168.1.50'), '192.168.1.50');
     expect(isLiteralIpAddress('192.168.1.50'), isTrue);
@@ -262,8 +263,7 @@ void main() {
     expect(await resolveModuleAddress('no-such-host.invalid'), isNull);
   });
 
-  test('a cached IP is dialled instead of re-resolving the hostname',
-      () async {
+  test('a cached IP is dialled instead of re-resolving the hostname', () async {
     final device = await _FakeApiDevice.start();
     final store = ModuleStore.forTesting();
     // The hostname is deliberately bogus: only the cached IP may be used.

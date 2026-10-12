@@ -357,7 +357,8 @@ void main() {
     await fake.server.close();
   });
 
-  test('set_input_configuration is sent on a one-shot session when the module '
+  test(
+      'set_input_configuration is sent on a one-shot session when the module '
       'has no live Control API unit', () async {
     final fake = await _FakeDevice.start();
     final store = ModuleStore.forTesting();

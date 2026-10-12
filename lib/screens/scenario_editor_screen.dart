@@ -442,11 +442,9 @@ class _ScenarioEditorScreenState extends State<ScenarioEditorScreen> {
                           m.type == ModuleType.dimmerAc))
                         for (var c = 0; c < m.channels.length; c++)
                           DropdownMenuItem(
-                              value:
-                                  (moduleIndexOf(_modules, m), c),
+                              value: (moduleIndexOf(_modules, m), c),
                               child: Text('${m.channels[c].name} - ${m.name}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis))
+                                  maxLines: 1, overflow: TextOverflow.ellipsis))
                     ],
                     selectedItemBuilder: (context) => [
                       for (final m in _modules.where((m) =>

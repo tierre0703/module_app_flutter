@@ -42,9 +42,10 @@ import 'soleux_control_api_service.dart';
 /// Periodic 5008-API reachability monitor that owns [ConnectionStatus].
 class ModuleApiHealthService {
   static ModuleApiHealthService? _shared;
-  static ModuleApiHealthService get shared => _shared ??=
-      ModuleApiHealthService(
-          store: ModuleStore.shared, statusService: () => ModuleStatusService.shared);
+  static ModuleApiHealthService get shared =>
+      _shared ??= ModuleApiHealthService(
+          store: ModuleStore.shared,
+          statusService: () => ModuleStatusService.shared);
 
   /// Creates an isolated service for tests.
   @visibleForTesting
@@ -194,16 +195,15 @@ class ModuleApiHealthService {
       if (reachable && previous != ConnectionStatus.offline) {
         // It is back on the network but the API session could not be opened:
         // report the degraded state rather than offline.
-        return _apply(
-            live, ConnectionStatus.unknown, previous, commit: false);
+        return _apply(live, ConnectionStatus.unknown, previous, commit: false);
       }
     }
 
     return _apply(live, next, previous);
   }
 
-  ConnectionStatus _apply(DeviceModule live, ConnectionStatus next,
-      ConnectionStatus previous,
+  ConnectionStatus _apply(
+      DeviceModule live, ConnectionStatus next, ConnectionStatus previous,
       {bool commit = true}) {
     if (live.status != next) {
       live.status = next;

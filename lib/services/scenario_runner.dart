@@ -198,7 +198,8 @@ class ScenarioRunner {
     return service.setVirtualInputState(moduleId, index, false);
   }
 
-  DeviceModule? _resolveModule(List<DeviceModule> modules, ScenarioAction action) {
+  DeviceModule? _resolveModule(
+      List<DeviceModule> modules, ScenarioAction action) {
     // Prefer the stored fleet index (stable across renames); fall back to the
     // saved name for actions created before index wiring existed.
     final byIndex = moduleAtIndex(modules, action.moduleIndex);

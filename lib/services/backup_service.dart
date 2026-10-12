@@ -348,8 +348,8 @@ class BackupService {
   /// Name of the local backup file written into the default directory. There is
   /// no single fixed name any more; this is the name for [DateTime.now] (used
   /// to document the convention and as the FilePicker fallback).
-  static String get fileName =>
-      fileNameAt(DateTime.now(), locationName: SettingsStore.shared.locationName);
+  static String get fileName => fileNameAt(DateTime.now(),
+      locationName: SettingsStore.shared.locationName);
 
   /// Turns a human location name into a file-name-safe slug, falling back to
   /// `location` when nothing usable is available (`Casa Verde` -> `Casa_Verde`).
@@ -419,7 +419,8 @@ class BackupService {
     final dir = directory ?? await defaultBackupDirectory();
     if (!await dir.exists()) await dir.create(recursive: true);
     final now = DateTime.now();
-    final base = fileNameAt(now, locationName: SettingsStore.shared.locationName);
+    final base =
+        fileNameAt(now, locationName: SettingsStore.shared.locationName);
     var file = File('${dir.path}${Platform.pathSeparator}$base');
     var collision = 2;
     while (await file.exists()) {
@@ -481,7 +482,8 @@ class BackupService {
   /// fixed name).
   static bool isBackupFileName(String name) =>
       name == legacyFileName ||
-      (name.startsWith('${filePrefix}_') && name.toLowerCase().endsWith('.json'));
+      (name.startsWith('${filePrefix}_') &&
+          name.toLowerCase().endsWith('.json'));
 
   /// Reads the backup at the explicit [file] path (e.g. one picked by the
   /// user), or null when it is missing / unreadable.

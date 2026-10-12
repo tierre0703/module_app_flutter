@@ -174,8 +174,7 @@ void main() {
       await older.setLastModified(DateTime(2026, 1, 1, 10, 10, 10));
       await newer.setLastModified(DateTime(2026, 2, 2, 20, 20, 20));
 
-      expect(await BackupService.latestBackupFile(dir),
-          isNotNull,
+      expect(await BackupService.latestBackupFile(dir), isNotNull,
           reason: 'the newest timestamped backup must be picked');
       expect((await BackupService.latestBackupFile(dir))!.path, newer.path);
 
@@ -183,8 +182,8 @@ void main() {
       final legacy = File('${dir.path}${Platform.pathSeparator}'
           '${BackupService.legacyFileName}');
       await legacy.writeAsString('{}');
-      expect(BackupService.isBackupFileName(BackupService.legacyFileName),
-          isTrue);
+      expect(
+          BackupService.isBackupFileName(BackupService.legacyFileName), isTrue);
       expect(BackupService.isBackupFileName('notes.txt'), isFalse);
     });
   });

@@ -1462,19 +1462,15 @@ class ModuleStatusService {
   /// Per-module timeout for a JSON `hello` round-trip.
   static const Duration _jsonHelloTimeout = Duration(seconds: 2);
 
-  /// Gets the persistent legacy AT unit for [module], creating (and wiring) it
-  /// the first time.
-  ///
-  /// DEPRECATED / legacy: no production path reaches this any more (the Control
-  /// API on 5008 is the only supported protocol). Retained so the legacy AT
-  /// stack can be removed in one follow-up step.
-  @Deprecated('The legacy AT protocol is no longer supported; the Control API '
-      '(TCP 5008) is the only protocol. Retained for the staged removal.')
   /// Gets the persistent unit for [module], creating (and wiring) it the first
   /// time. Its live streams are routed into the store on creation only. A unit
   /// bound to a different endpoint (the module's address or TCP port changed,
   /// e.g. via the edit-module-info dialog) is disposed and recreated so it never
   /// keeps reconnecting to the stale endpoint.
+  ///
+  /// DEPRECATED / legacy: with the Control API (5008) as the only supported
+  /// protocol no production path reaches this any more; it is retained so the
+  /// legacy AT stack can be removed in one follow-up step.
   ModuleCommandService _ensureUnit(
       DeviceModule module, ModuleStatusFetcher fetcher) {
     final existing = _units[module.id];
