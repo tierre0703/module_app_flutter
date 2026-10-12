@@ -119,7 +119,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('Settings screen renders the command protocol picker',
+  testWidgets('Settings screen renders the command protocol section',
       (tester) async {
     await pumpSettings(tester);
 
@@ -129,12 +129,31 @@ void main() {
     expect(find.text('HTTPS'), findsOneWidget);
   });
 
-  testWidgets('selecting HTTPS persists the transport choice', (tester) async {
+  testWidgets('HTTP/HTTPS are shown but not selectable', (tester) async {
     await pumpSettings(tester);
 
-    await tester.tap(find.text('HTTPS'));
+    // The HTTP and HTTPS rows are greyed out and cannot change the transport.
+    final tiles = tester
+        .widgetList<RadioListTile<CommandTransportMode>>(
+            find.byType(RadioListTile<CommandTransportMode>))
+        .toList();
+    expect(tiles, hasLength(3));
+    final http = tiles[1];
+    final https = tiles[2];
+    expect(http.enabled, isFalse, reason: 'HTTP is disabled');
+    expect(https.enabled, isFalse, reason: 'HTTPS is disabled');
+    // TCP stays available and is the active selection.
+    expect(tiles[0].enabled, isNot(false));
+    expect(SettingsStore.shared.commandTransport, CommandTransportMode.tcp);
+
+    await tester.tap(find.text('HTTPS'), warnIfMissed: false);
     await tester.pumpAndSettle();
-    expect(SettingsStore.shared.commandTransport, CommandTransportMode.https);
+    expect(SettingsStore.shared.commandTransport, CommandTransportMode.tcp,
+        reason: 'tapping a disabled transport must not change the selection');
+
+    await tester.tap(find.text('TCP (port 5008)'));
+    await tester.pumpAndSettle();
+    expect(SettingsStore.shared.commandTransport, CommandTransportMode.tcp);
   });
 
   testWidgets('Restore of a non-backup file shows the no-backup notice',
