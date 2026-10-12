@@ -25,6 +25,18 @@ end
 
 require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
 
+# App Store validation (ITMS-90683) requires a purpose string for every
+# sensitive API an SDK references, even when the app itself never calls it.
+# file_picker's iOS pod bundles the DKImagePickerController gallery/camera
+# stack, whose transitive DKCamera dependency links CoreLocation. This app only
+# opens the document picker (FileType.custom) to import/export backup files, so
+# the media, audio and camera pickers are compiled out below - the unused
+# permission paths (and CoreLocation) are then never linked, and no location
+# purpose string is needed.
+Pod::PICKER_MEDIA = false
+Pod::PICKER_AUDIO = false
+Pod::PICKER_CAMERA = false
+
 flutter_ios_podfile_setup
 
 target 'Runner' do
