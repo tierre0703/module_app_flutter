@@ -27,10 +27,13 @@ Future<ScenarioAction?> showAddActionSheet(
 }) {
   final List<DeviceModule> outputModules =
       modules.where((m) => m.channels.isNotEmpty).toList();
+  // A disabled input is not an eligible target anywhere in the app, so only
+  // enabled inputs are offered here.
   final List<DeviceModule> inputModules =
-      modules.where((m) => m.inputs.isNotEmpty).toList();
+      modules.where((m) => _enabledInputs(m.inputs).isNotEmpty).toList();
   final List<DeviceModule> allModules = modules
-      .where((m) => m.channels.isNotEmpty || m.inputs.isNotEmpty)
+      .where((m) =>
+          m.channels.isNotEmpty || _enabledInputs(m.inputs).isNotEmpty)
       .toList();
 
   bool isInputTarget = initial?.isInputAction ?? false;
@@ -46,9 +49,11 @@ Future<ScenarioAction?> showAddActionSheet(
         (allModules.isNotEmpty ? allModules.first : null);
     if (isInputTarget) {
       input = _matchInput(module?.inputs, initial.inputName);
-      if (module != null && module.inputs.isEmpty && inputModules.isNotEmpty) {
+      if (module != null &&
+          _enabledInputs(module.inputs).isEmpty &&
+          inputModules.isNotEmpty) {
         module = inputModules.first;
-        input = module.inputs.first;
+        input = _enabledInputs(module.inputs).first;
       }
       // Dimmer inputs only support Pulse.
       if (module?.type == ModuleType.dimmerDc ||
@@ -71,7 +76,7 @@ Future<ScenarioAction?> showAddActionSheet(
     } else if (inputModules.isNotEmpty) {
       isInputTarget = true;
       module = inputModules.first;
-      input = module.inputs.first;
+      input = _enabledInputs(module.inputs).first;
     }
   }
 
@@ -93,12 +98,12 @@ Future<ScenarioAction?> showAddActionSheet(
               // otherwise fall back to the first module that does.
               if (toInput) {
                 channel = null;
-                input = module?.inputs.isNotEmpty == true
-                    ? module!.inputs.first
+                input = _enabledInputs(module?.inputs).isNotEmpty
+                    ? _enabledInputs(module!.inputs).first
                     : null;
                 if (input == null && inputModules.isNotEmpty) {
                   module = inputModules.first;
-                  input = module!.inputs.first;
+                  input = _enabledInputs(module!.inputs).first;
                 }
                 // Dimmer inputs only support Pulse.
                 if (module?.type == ModuleType.dimmerDc ||
@@ -153,8 +158,8 @@ Future<ScenarioAction?> showAddActionSheet(
                       onChanged: (m) => setSheetState(() {
                         module = m;
                         if (isInputTarget) {
-                          input = m?.inputs.isNotEmpty == true
-                              ? m!.inputs.first
+                          input = _enabledInputs(m?.inputs).isNotEmpty
+                              ? _enabledInputs(m!.inputs).first
                               : null;
                           // Dimmer inputs only support Pulse.
                           if (m?.type == ModuleType.dimmerDc ||
@@ -190,7 +195,7 @@ Future<ScenarioAction?> showAddActionSheet(
                     ),
                     const SizedBox(height: 12),
                     if (isInputTarget)
-                      if (module?.inputs.isEmpty ?? true)
+                      if (_enabledInputs(module?.inputs).isEmpty)
                         Text(l10n.actionPickerNoInputs)
                       else
                         DropdownButtonFormField<PhysicalInput>(
@@ -198,8 +203,7 @@ Future<ScenarioAction?> showAddActionSheet(
                           decoration: InputDecoration(
                               labelText: l10n.actionPickerInputLabel),
                           items: [
-                            for (final i
-                                in module?.inputs ?? const <PhysicalInput>[])
+                            for (final i in _enabledInputs(module?.inputs))
                               DropdownMenuItem(value: i, child: Text(i.name)),
                           ],
                           onChanged: (i) => setSheetState(() => input = i),
@@ -306,6 +310,13 @@ Future<ScenarioAction?> showAddActionSheet(
     },
   );
 }
+
+/// Only the inputs the user left enabled can be targeted by a scenario or
+/// automation; a disabled input is ignored by the whole app.
+List<PhysicalInput> _enabledInputs(List<PhysicalInput>? inputs) => [
+      for (final i in inputs ?? const <PhysicalInput>[])
+        if (i.enabled) i,
+    ];
 
 DeviceModule? _matchModule(List<DeviceModule> modules, String name) {
   for (final m in modules) {

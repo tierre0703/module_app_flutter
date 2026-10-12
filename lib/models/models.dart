@@ -303,7 +303,9 @@ class PhysicalInput {
   String name;
   InputMode mode;
 
-  /// When false the input is hidden from its module screen.
+  /// When false the input is disabled: it stays visible on its module screen
+  /// (greyed out with a "Disabled" badge) but cannot be operated from the app
+  /// and is not offered as a scenario/automation target anywhere else.
   bool enabled;
 
   /// Live input state (`input_state_changed` device event / `IN:<ch>:<ON|OFF>`),

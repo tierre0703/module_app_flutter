@@ -12,6 +12,12 @@ import '../theme/app_theme.dart';
 import '../widgets/action_picker.dart';
 import '../widgets/common_widgets.dart';
 
+/// Only the inputs the user left enabled can be watched by an automation.
+List<PhysicalInput> _enabledInputs(List<PhysicalInput>? inputs) => [
+      for (final i in inputs ?? const <PhysicalInput>[])
+        if (i.enabled) i,
+    ];
+
 class AutomationEditorScreen extends StatefulWidget {
   const AutomationEditorScreen({super.key, this.automation});
 
@@ -41,11 +47,12 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
   late String _deviceInputName = widget.automation?.watchInputName ?? '';
   late String _deviceChannelName = widget.automation?.watchChannelName ?? '';
 
-  /// Modules that expose at least one channel output or input, i.e. everything
-  /// the device-state trigger can watch.
+  /// Modules that expose at least one channel output or enabled input, i.e.
+  /// everything the device-state trigger can watch. Disabled inputs are not
+  /// offered as watch targets.
   List<DeviceModule> get _modulesWithTargets => [
         for (final m in _modules)
-          if (m.channels.isNotEmpty || m.inputs.isNotEmpty) m
+          if (m.channels.isNotEmpty || _enabledInputs(m.inputs).isNotEmpty) m
       ];
 
   DeviceModule? get _selectedModule {
@@ -59,7 +66,7 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
       [for (final c in m?.channels ?? const <ChannelOutput>[]) c.name];
 
   List<String> _inputNames(DeviceModule? m) =>
-      [for (final i in m?.inputs ?? const <PhysicalInput>[]) i.name];
+      [for (final i in _enabledInputs(m?.inputs)) i.name];
 
   String get _watchTargetName =>
       _deviceIsInput ? _deviceInputName : _deviceChannelName;

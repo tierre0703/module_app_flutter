@@ -454,10 +454,11 @@
   "channelEditorInitialLastStateHint": "Ieșirea restabilește starea pe care o avea înainte de repornirea modulului.",
 
   "inputEditorOnModule": "Pe modulul: {name}",
+  "inputEditorEditTitle": "Editează intrarea",
   "inputEditorBehavior": "Comportament",
   "inputEditorName": "Nume",
   "inputEditorEnabled": "Activat",
-  "inputEditorEnabledHint": "Când este activat, această intrare este afișată pe ecranul modulului.",
+  "inputEditorEnabledHint": "Când este dezactivată, această intrare nu este afișată în scenarii și automatizări și nu poate fi acționată de pe ecranul modulului.",
   "inputEditorBehaviorHint": "Apăsarea și menținerea trimite întotdeauna un impuls către intrarea virtuală; acest comportament se aplică intrării fizice mapate.",
   "inputEditorBoundTarget": "Ținta legată",
   "inputEditorOutputScenarioLabel": "Ieșire sau scenariu",

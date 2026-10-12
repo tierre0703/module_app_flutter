@@ -63,6 +63,7 @@ class _InputEditorScreenState extends State<InputEditorScreen> {
       input.enabled = _enabled;
     });
 
+    // `set_input_configuration` with channel + name + enabled (+ mode).
     await ModuleStatusService.shared.updateInputConfiguration(
       widget.module.id,
       widget.index,

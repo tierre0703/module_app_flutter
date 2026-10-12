@@ -56,6 +56,23 @@ class _RelayControlScreenState extends State<RelayControlScreen> {
     setState(() {});
   }
 
+  /// Enables/disables the input from the card's toggle switch: the local copy
+  /// is updated (so the card greys out and stays listed) and the new state is
+  /// pushed to the module with `set_input_configuration` (`channel`, `name`,
+  /// `enabled`).
+  Future<void> _setInputEnabled(int index, bool enabled) async {
+    await ModuleStore.shared.update(widget.module.id, (m) {
+      m.inputs[index].enabled = enabled;
+    });
+    await ModuleStatusService.shared.updateInputConfiguration(
+      widget.module.id,
+      index,
+      name: widget.module.inputs[index].name,
+      enabled: enabled,
+    );
+    if (mounted) setState(() {});
+  }
+
   /// Drives the input's virtual input: sending `true` on touch start and
   /// `false` on touch end (set_virtual_input_state). Results in no state
   /// change when the module is offline.
@@ -161,17 +178,18 @@ class _RelayControlScreenState extends State<RelayControlScreen> {
                   const SizedBox(height: 24),
                   SectionHeader(l10n.moduleInputs(module.inputs.length)),
                   for (int i = 0; i < module.inputs.length; i++)
-                    if (module.inputs[i].enabled)
-                      Padding(
-                        padding: const EdgeInsets.only(
-                            bottom: AppSpacing.betweenCards),
-                        child: InputFieldCard(
-                          input: module.inputs[i],
-                          onHoldChanged: (held) => _holdInput(module, i, held),
-                          onReleased: _refresh,
-                          onEdit: () => _editInput(module.inputs[i], i),
-                        ),
+                    Padding(
+                      padding: const EdgeInsets.only(
+                          bottom: AppSpacing.betweenCards),
+                      child: InputFieldCard(
+                        input: module.inputs[i],
+                        onHoldChanged: (held) => _holdInput(module, i, held),
+                        onReleased: _refresh,
+                        onEdit: () => _editInput(module.inputs[i], i),
+                        onEnabledChanged: (enabled) =>
+                            _setInputEnabled(i, enabled),
                       ),
+                    ),
                 ],
               ],
             ),
