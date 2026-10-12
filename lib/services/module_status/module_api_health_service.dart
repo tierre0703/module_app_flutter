@@ -122,9 +122,9 @@ class ModuleApiHealthService {
 
   void _onStoreChanged() {
     if (!_running || _checking) return;
-    // A module was just added / re-addressed; its status is seeded offline by
-    // the caller, so an immediate pass is enough here.
-    unawaited(_initialiseNewModules());
+    // A module was added, removed or re-addressed: re-check now so its status
+    // catches up immediately instead of waiting for the next periodic pass.
+    unawaited(_initialiseNewModules().then((_) => kick()));
   }
 
   /// Seeds every module that has no status baseline yet to offline, so a
@@ -283,6 +283,10 @@ class ModuleApiHealthService {
     }
   }
 
+  /// Stops the periodic poll and runs one pass immediately, so the next check
+  /// is not blocked behind a slow periodic tick.
+  Future<void> kick() => checkAll();
+
   /// Opens a TCP socket to [host]:[port], where [host] is an IP literal or a
   /// hostname (remote mode). A hostname is resolved IPv4-first and each address
   /// is tried until one connects. Returns null when no address could be
@@ -314,10 +318,19 @@ class ModuleApiHealthService {
 
   /// Waits for the JSON response with [id]. The line splitter tolerates a
   /// response split across TCP chunks; a partial frame simply times out.
+  ///
+  /// The raw received bytes are logged (and returned via [onRaw]) so a
+  /// device/proxy that answers something other than the expected JSON envelope
+  /// is visible in the debug log instead of silently timing out.
   Future<SoleuxJsonResponseLike?> _firstJsonResponse(
-      Socket socket, int id) async {
+    Socket socket,
+    int id, {
+    void Function(String raw)? onRaw,
+  }) async {
     final completer = Completer<SoleuxJsonResponseLike?>();
     final buffer = StringBuffer();
+    final seen = StringBuffer();
+    var completed = false;
     late StreamSubscription<List<int>> subscription;
     final timer = Timer(_helloTimeout, () {
       if (!completer.isCompleted) completer.complete(null);
@@ -334,9 +347,12 @@ class ModuleApiHealthService {
           final line = text.substring(0, index).trim();
           text = text.substring(index + 1);
           index = text.indexOf('\n');
+          if (line.isEmpty) continue;
+          seen.write('$line | ');
           final decoded = _decodeResponse(line, id);
-          if (decoded != null && !completer.isCompleted) {
-            completer.complete(decoded);
+          if (decoded != null) {
+            completed = true;
+            if (!completer.isCompleted) completer.complete(decoded);
           }
         }
         buffer
@@ -353,7 +369,15 @@ class ModuleApiHealthService {
     );
 
     try {
-      return await completer.future;
+      final response = await completer.future;
+      onRaw?.call(seen.toString());
+      if (!completed) {
+        // Nothing matched the request id: the module answered, but not with a
+        // usable Control API response.
+        debugPrint('ModuleApiHealthService: no $id response from the module '
+            '(received: ${seen.isEmpty ? 'nothing' : seen.toString()})');
+      }
+      return response;
     } finally {
       timer.cancel();
       await subscription.cancel();
