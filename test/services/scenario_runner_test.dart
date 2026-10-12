@@ -127,6 +127,43 @@ void main() {
       expect(result.actions.first.detail, contains('not connected'));
     });
 
+    test('resolves an action by index even after the module is renamed',
+        () async {
+      await seedRelayFleet();
+      final runner = ScenarioRunner.shared;
+
+      // Wired by fleet index 0 + channel 0: renaming the module/output no
+      // longer orphans the action.
+      await ModuleStore.shared.update('m1', (m) {
+        m.name = 'Renamed Relay';
+        m.channels[0].name = 'Renamed Light';
+      });
+
+      final result = await runner.run(Scenario(
+        id: 's-index',
+        name: 'Index Wired',
+        icon: Icons.play_arrow,
+        type: ScenarioType.tapToRun,
+        actions: [
+          ScenarioAction(
+            moduleName: 'Main Cabin Relay',
+            moduleIndex: 0,
+            channelName: 'Cabin Light',
+            channelIndex: 0,
+            icon: Icons.lightbulb,
+            isDimmerAction: false,
+            turnOn: true,
+          ),
+        ],
+      ));
+
+      expect(result.actions, hasLength(1));
+      // Resolved to the (renamed) module and reached the connection check:
+      // proof the index wiring survived the rename.
+      expect(result.actions.first.detail, contains('Renamed Relay'));
+      expect(result.actions.first.detail, contains('not connected'));
+    });
+
     test('reports an unknown input as a failed action', () async {
       await seedRelayFleet();
       final runner = ScenarioRunner.shared;

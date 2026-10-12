@@ -4,6 +4,10 @@
 // tap-to-run scenario (multiple ON/OFF or brightness actions) or a
 // dedicated "Manual dimming Slider" scenario controlling a single dimmer
 // output.
+//
+// Outputs/inputs are wired by *index* (fleet position + channel/input
+// position), not by name, so renaming a module or an output never orphans
+// the scenario's actions.
 import 'package:flutter/material.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
@@ -39,6 +43,8 @@ class _ScenarioEditorScreenState extends State<ScenarioEditorScreen> {
   late final List<ScenarioAction> _actions =
       List.of(widget.scenario?.actions ?? const []);
   late String _sliderTargetName = widget.scenario?.sliderTargetName ?? '';
+  late int _sliderModuleIndex = widget.scenario?.sliderModuleIndex ?? -1;
+  late int _sliderChannelIndex = widget.scenario?.sliderChannelIndex ?? -1;
   late int _sliderValue = widget.scenario?.sliderValue ?? 50;
 
   /// Value while the user is dragging the slider; null lets the thumb follow
@@ -49,11 +55,13 @@ class _ScenarioEditorScreenState extends State<ScenarioEditorScreen> {
   List<Room> _rooms = const [];
   List<Color> _savedColors = const [];
 
-  List<String> get _dimmerTargets => [
-        for (final m in _modules.where((m) =>
-            m.type == ModuleType.dimmerDc || m.type == ModuleType.dimmerAc))
-          for (final c in m.channels) '${c.name} - ${m.name}',
-      ];
+  /// The scenario's dimmer target wired by index, or -1/-1 when the target has
+  /// not been chosen / no longer resolves.
+  (int, int) get _selectedSliderTarget {
+    final ref = _sliderRef;
+    if (ref == null) return (-1, -1);
+    return (moduleIndexOf(_modules, ref.$1), ref.$2);
+  }
 
   @override
   void initState() {
@@ -189,11 +197,19 @@ class _ScenarioEditorScreenState extends State<ScenarioEditorScreen> {
     }
   }
 
-  ChannelOutput? get _sliderTarget =>
-      dimmerTargetChannel(ModuleStore.shared.modules, _sliderTargetName);
+  ChannelOutput? get _sliderTarget {
+    final ref = _sliderRef;
+    return ref == null ? null : ref.$1.channels[ref.$2];
+  }
 
-  (DeviceModule, int)? get _sliderRef =>
-      dimmerTargetRef(ModuleStore.shared.modules, _sliderTargetName);
+  /// The dimmer output the manual-slider scenario targets, resolved by index
+  /// (stable across renames) with the saved name as a legacy fallback.
+  (DeviceModule, int)? get _sliderRef => dimmerTargetRef(
+        ModuleStore.shared.modules,
+        moduleIndex: _sliderModuleIndex,
+        channelIndex: _sliderChannelIndex,
+        targetName: _sliderTargetName,
+      );
 
   /// The slider's displayed value: the in-progress drag value, else the target
   /// channel's live PWM (module is the source of truth), falling back to the
@@ -228,7 +244,6 @@ class _ScenarioEditorScreenState extends State<ScenarioEditorScreen> {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final l10n = AppLocalizations.of(context);
     final roomOptions = ['General', ..._rooms.map((r) => r.name)];
-    final dimmerTargets = _dimmerTargets;
 
     return ListenableBuilder(
       listenable: ModuleStore.shared,
@@ -407,39 +422,51 @@ class _ScenarioEditorScreenState extends State<ScenarioEditorScreen> {
                       ),
                 ] else ...[
                   SectionHeader(l10n.scenarioSliderTargetSection),
-                  DropdownButtonFormField<String>(
+                  DropdownButtonFormField<(int, int)>(
                     // DropdownButtonFormField only reads initialValue when it is
                     // first created, so once the module list loads asynchronously
                     // the previously stored target would keep showing blank.
                     // Recreating the field when the selectable state changes makes
                     // the async-loaded list (and a missing target) show correctly.
-                    key: ValueKey(dimmerTargets.contains(_sliderTargetName)
-                        ? _sliderTargetName
-                        : ''),
-                    initialValue: dimmerTargets.contains(_sliderTargetName)
-                        ? _sliderTargetName
-                        : null,
+                    key: ValueKey(_selectedSliderTarget),
+                    initialValue: _selectedSliderTarget == (-1, -1)
+                        ? null
+                        : _selectedSliderTarget,
                     isExpanded: true,
                     decoration: InputDecoration(
                         labelText: l10n.scenarioDimmerOutputLabel,
                         prefixIcon: const Icon(Icons.lightbulb_outline)),
                     items: [
-                      for (final t in dimmerTargets)
-                        DropdownMenuItem(
-                            value: t,
-                            child: Text(t,
-                                maxLines: 1, overflow: TextOverflow.ellipsis))
+                      for (final m in _modules.where((m) =>
+                          m.type == ModuleType.dimmerDc ||
+                          m.type == ModuleType.dimmerAc))
+                        for (var c = 0; c < m.channels.length; c++)
+                          DropdownMenuItem(
+                              value:
+                                  (moduleIndexOf(_modules, m), c),
+                              child: Text('${m.channels[c].name} - ${m.name}',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis))
                     ],
                     selectedItemBuilder: (context) => [
-                      for (final t in dimmerTargets)
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(t,
-                              maxLines: 1, overflow: TextOverflow.ellipsis),
-                        )
+                      for (final m in _modules.where((m) =>
+                          m.type == ModuleType.dimmerDc ||
+                          m.type == ModuleType.dimmerAc))
+                        for (final c in m.channels)
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text('${c.name} - ${m.name}',
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                          )
                     ],
-                    onChanged: (value) => setState(
-                        () => _sliderTargetName = value ?? _sliderTargetName),
+                    onChanged: (value) => setState(() {
+                      if (value == null) return;
+                      _sliderModuleIndex = value.$1;
+                      _sliderChannelIndex = value.$2;
+                      final module = _modules[value.$1];
+                      _sliderTargetName =
+                          '${module.channels[value.$2].name} - ${module.name}';
+                    }),
                   ),
                   const SizedBox(height: 16),
                   Text(l10n.scenarioDefaultBrightness(sliderValue),

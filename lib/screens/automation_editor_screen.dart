@@ -3,6 +3,10 @@
 // Brief section 2.4 "Smart Automations": build an IF...THEN... rule -
 // trigger by time of day or by another device's state - with one or more
 // resulting actions.
+//
+// Both the watched target and every THEN action are wired by *index* (fleet
+// position + channel/input position), not by name, so renaming a module or an
+// output never orphans the rule.
 import 'package:flutter/material.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
@@ -42,8 +46,14 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
   late final List<ScenarioAction> _actions =
       List.of(widget.automation?.actions ?? const []);
   List<DeviceModule> _modules = const [];
-  late String _deviceModuleName = widget.automation?.watchModuleName ?? '';
+
+  /// Watched module/input/output wired by **index** (see [Automation]); the
+  /// names are kept for the saved trigger summary and as a legacy fallback.
+  late int _watchModuleIndex = widget.automation?.watchModuleIndex ?? -1;
   late bool _deviceIsInput = widget.automation?.watchIsInput ?? false;
+  late int _watchInputIndex = widget.automation?.watchInputIndex ?? -1;
+  late int _watchChannelIndex = widget.automation?.watchChannelIndex ?? -1;
+  late String _deviceModuleName = widget.automation?.watchModuleName ?? '';
   late String _deviceInputName = widget.automation?.watchInputName ?? '';
   late String _deviceChannelName = widget.automation?.watchChannelName ?? '';
 
@@ -55,30 +65,53 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
           if (m.channels.isNotEmpty || _enabledInputs(m.inputs).isNotEmpty) m
       ];
 
+  /// The watched module: resolved by fleet index when wired, otherwise (legacy)
+  /// by the saved module name.
   DeviceModule? get _selectedModule {
+    final byIndex = moduleAtIndex(_modules, _watchModuleIndex);
+    if (byIndex != null) return byIndex;
+    if (_deviceModuleName.isEmpty) return null;
     for (final m in _modulesWithTargets) {
       if (m.name == _deviceModuleName) return m;
     }
     return null;
   }
 
-  List<String> _outputNames(DeviceModule? m) =>
-      [for (final c in m?.channels ?? const <ChannelOutput>[]) c.name];
+  /// Indices (within the module's channel/input list) the trigger can watch.
+  List<int> get _outputIndices => [
+        for (var i = 0; i < (_selectedModule?.channels.length ?? 0); i++) i,
+      ];
 
-  List<String> _inputNames(DeviceModule? m) =>
-      [for (final i in _enabledInputs(m?.inputs)) i.name];
+  /// Indices of the module's *enabled* inputs (a disabled input is never a
+  /// watch target).
+  List<int> get _inputIndices => [
+        for (var i = 0; i < (_selectedModule?.inputs.length ?? 0); i++)
+          if (_selectedModule!.inputs[i].enabled) i,
+      ];
 
-  String get _watchTargetName =>
-      _deviceIsInput ? _deviceInputName : _deviceChannelName;
+  /// The module name shown for the saved trigger summary.
+  String get _watchTargetName {
+    final m = _selectedModule;
+    if (m != null) {
+      return _deviceIsInput
+          ? _inputNameAt(m, _watchInputIndex)
+          : _channelNameAt(m, _watchChannelIndex);
+    }
+    return _deviceIsInput ? _deviceInputName : _deviceChannelName;
+  }
 
-  /// True when the selected module exposes at least one output (or input when
-  /// an input trigger is chosen), i.e. there is a concrete target to watch.
+  String _channelNameAt(DeviceModule m, int index) =>
+      (index >= 0 && index < m.channels.length) ? m.channels[index].name : '';
+
+  String _inputNameAt(DeviceModule m, int index) =>
+      (index >= 0 && index < m.inputs.length) ? m.inputs[index].name : '';
+
+  /// True when the selected module exposes at least one output (or enabled
+  /// input when an input trigger is chosen), i.e. there is a target to watch.
   bool get _hasWatchTarget {
     final m = _selectedModule;
     if (m == null) return false;
-    return _deviceIsInput
-        ? _inputNames(m).isNotEmpty
-        : _outputNames(m).isNotEmpty;
+    return _deviceIsInput ? _inputIndices.isNotEmpty : _outputIndices.isNotEmpty;
   }
 
   @override
@@ -93,21 +126,28 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
     });
   }
 
-  /// Restores the module-scoped trigger target when editing a saved automation.
-  ///
-  /// Legacy automations saved only the channel/input name, so the owning module
-  /// is derived from it the first time the editor opens.
+  /// Restores the module-scoped trigger target when editing a saved
+  /// automation: by fleet index first, then (legacy) by the saved names.
   void _adoptSavedTriggerTarget() {
-    if (_deviceModuleName.isEmpty && _watchTargetName.isNotEmpty) {
-      for (final m in _modulesWithTargets) {
-        final names = _deviceIsInput ? _inputNames(m) : _outputNames(m);
-        if (names.contains(_watchTargetName)) {
-          _deviceModuleName = m.name;
-          break;
+    if (moduleAtIndex(_modules, _watchModuleIndex) == null) {
+      // Legacy: find the module that owns the saved output/input name.
+      final wanted = _deviceIsInput ? _deviceInputName : _deviceChannelName;
+      if (wanted.isNotEmpty) {
+        for (final m in _modulesWithTargets) {
+          final names = _deviceIsInput
+              ? [for (final i in m.inputs) i.name]
+              : [for (final c in m.channels) c.name];
+          if (names.contains(wanted)) {
+            _watchModuleIndex = moduleIndexOf(_modules, m);
+            _deviceModuleName = m.name;
+            break;
+          }
         }
       }
     }
-    if (_deviceModuleName.isEmpty && _modulesWithTargets.isNotEmpty) {
+    if (moduleAtIndex(_modules, _watchModuleIndex) == null &&
+        _modulesWithTargets.isNotEmpty) {
+      _watchModuleIndex = moduleIndexOf(_modules, _modulesWithTargets.first);
       _deviceModuleName = _modulesWithTargets.first.name;
     }
     _ensureValidWatchTarget();
@@ -117,13 +157,22 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
   /// to the module's first output/input of the selected kind.
   void _ensureValidWatchTarget() {
     final m = _selectedModule;
-    final names = _deviceIsInput ? _inputNames(m) : _outputNames(m);
-    if (!names.contains(_watchTargetName)) {
-      if (_deviceIsInput) {
-        _deviceInputName = names.isNotEmpty ? names.first : '';
-      } else {
-        _deviceChannelName = names.isNotEmpty ? names.first : '';
+    if (m == null) {
+      _watchInputIndex = -1;
+      _watchChannelIndex = -1;
+      return;
+    }
+    if (_deviceIsInput) {
+      if (!_inputIndices.contains(_watchInputIndex)) {
+        _watchInputIndex = _inputIndices.isNotEmpty ? _inputIndices.first : -1;
       }
+      _deviceInputName = _inputNameAt(m, _watchInputIndex);
+    } else {
+      if (!_outputIndices.contains(_watchChannelIndex)) {
+        _watchChannelIndex =
+            _outputIndices.isNotEmpty ? _outputIndices.first : -1;
+      }
+      _deviceChannelName = _channelNameAt(m, _watchChannelIndex);
     }
   }
 
@@ -132,15 +181,18 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
   void _resetWatchTargetToFirst() {
     final m = _selectedModule;
     if (m == null) {
+      _watchInputIndex = -1;
+      _watchChannelIndex = -1;
       _deviceInputName = '';
       _deviceChannelName = '';
       return;
     }
     if (_deviceIsInput) {
-      _deviceInputName = _inputNames(m).isNotEmpty ? _inputNames(m).first : '';
+      _watchInputIndex = _inputIndices.isNotEmpty ? _inputIndices.first : -1;
+      _deviceInputName = _inputNameAt(m, _watchInputIndex);
     } else {
-      _deviceChannelName =
-          _outputNames(m).isNotEmpty ? _outputNames(m).first : '';
+      _watchChannelIndex = _outputIndices.isNotEmpty ? _outputIndices.first : -1;
+      _deviceChannelName = _channelNameAt(m, _watchChannelIndex);
     }
   }
 
@@ -190,21 +242,17 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
           _triggerType == AutomationTriggerType.time ? _time.hour : null;
       a.scheduleMinute =
           _triggerType == AutomationTriggerType.time ? _time.minute : null;
-      a.watchModuleName = _triggerType == AutomationTriggerType.deviceState
-          ? _deviceModuleName
+      final watching = _triggerType == AutomationTriggerType.deviceState;
+      a.watchModuleName = watching
+          ? (_selectedModule?.name ?? _deviceModuleName)
           : null;
-      a.watchIsInput =
-          _triggerType == AutomationTriggerType.deviceState && _deviceIsInput;
-      a.watchInputName =
-          _triggerType == AutomationTriggerType.deviceState && _deviceIsInput
-              ? _deviceInputName
-              : null;
-      a.watchChannelName =
-          _triggerType == AutomationTriggerType.deviceState && !_deviceIsInput
-              ? _deviceChannelName
-              : null;
-      a.watchState =
-          _triggerType == AutomationTriggerType.deviceState && _deviceTurnsOn;
+      a.watchModuleIndex = watching ? _watchModuleIndex : -1;
+      a.watchIsInput = watching && _deviceIsInput;
+      a.watchInputName = watching && _deviceIsInput ? _deviceInputName : null;
+      a.watchInputIndex = watching && _deviceIsInput ? _watchInputIndex : -1;
+      a.watchChannelName = watching && !_deviceIsInput ? _deviceChannelName : null;
+      a.watchChannelIndex = watching && !_deviceIsInput ? _watchChannelIndex : -1;
+      a.watchState = watching && _deviceTurnsOn;
       a.actions
         ..clear()
         ..addAll(_actions);
@@ -220,18 +268,30 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
         scheduleMinute:
             _triggerType == AutomationTriggerType.time ? _time.minute : null,
         watchModuleName: _triggerType == AutomationTriggerType.deviceState
-            ? _deviceModuleName
+            ? (_selectedModule?.name ?? _deviceModuleName)
             : null,
+        watchModuleIndex:
+            _triggerType == AutomationTriggerType.deviceState
+                ? _watchModuleIndex
+                : -1,
         watchIsInput:
             _triggerType == AutomationTriggerType.deviceState && _deviceIsInput,
         watchInputName:
             _triggerType == AutomationTriggerType.deviceState && _deviceIsInput
                 ? _deviceInputName
                 : null,
+        watchInputIndex:
+            _triggerType == AutomationTriggerType.deviceState && _deviceIsInput
+                ? _watchInputIndex
+                : -1,
         watchChannelName:
             _triggerType == AutomationTriggerType.deviceState && !_deviceIsInput
                 ? _deviceChannelName
                 : null,
+        watchChannelIndex:
+            _triggerType == AutomationTriggerType.deviceState && !_deviceIsInput
+                ? _watchChannelIndex
+                : -1,
         watchState:
             _triggerType == AutomationTriggerType.deviceState && _deviceTurnsOn,
         actions: _actions,
@@ -286,19 +346,24 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                 ),
               )
             else ...[
-              DropdownButtonFormField<String>(
-                initialValue:
-                    _deviceModuleName.isEmpty ? null : _deviceModuleName,
+              DropdownButtonFormField<int>(
+                // Watched by fleet index, so a module rename never breaks it.
+                key: ValueKey(_watchModuleIndex),
+                initialValue: moduleAtIndex(_modules, _watchModuleIndex) != null
+                    ? _watchModuleIndex
+                    : null,
                 decoration: InputDecoration(
                     labelText: l10n.actionPickerModuleLabel,
                     prefixIcon: const Icon(Icons.devices_other)),
                 items: [
                   for (final m in _modulesWithTargets)
-                    DropdownMenuItem(value: m.name, child: Text(m.name)),
+                    DropdownMenuItem(
+                        value: moduleIndexOf(_modules, m),
+                        child: Text(m.name)),
                 ],
                 onChanged: (v) => setState(() {
                   if (v == null) return;
-                  _deviceModuleName = v;
+                  _watchModuleIndex = v;
                   _resetWatchTargetToFirst();
                 }),
               ),
@@ -326,8 +391,19 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                     ? l10n.actionPickerNoInputs
                     : l10n.actionPickerNoOutputs)
               else
-                DropdownButtonFormField<String>(
-                  initialValue: _watchTargetName,
+                DropdownButtonFormField<int>(
+                  // Watched output/input wired by index; the label is resolved
+                  // live so a rename does not orphan the trigger.
+                  key: ValueKey(_deviceIsInput
+                      ? 'in:$_watchInputIndex'
+                      : 'out:$_watchChannelIndex'),
+                  initialValue: _deviceIsInput
+                      ? (_inputIndices.contains(_watchInputIndex)
+                          ? _watchInputIndex
+                          : null)
+                      : (_outputIndices.contains(_watchChannelIndex)
+                          ? _watchChannelIndex
+                          : null),
                   decoration: InputDecoration(
                       labelText: _deviceIsInput
                           ? l10n.actionPickerInputLabel
@@ -336,16 +412,24 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                           ? Icons.touch_app_outlined
                           : Icons.sensors)),
                   items: [
-                    for (final n in _deviceIsInput
-                        ? _inputNames(_selectedModule)
-                        : _outputNames(_selectedModule))
-                      DropdownMenuItem(value: n, child: Text(n)),
+                    for (final i
+                        in _deviceIsInput ? _inputIndices : _outputIndices)
+                      DropdownMenuItem(
+                          value: i,
+                          child: Text(_deviceIsInput
+                              ? _inputNameAt(_selectedModule!, i)
+                              : _channelNameAt(_selectedModule!, i))),
                   ],
                   onChanged: (v) => setState(() {
+                    if (v == null) return;
+                    final m = _selectedModule;
+                    if (m == null) return;
                     if (_deviceIsInput) {
-                      _deviceInputName = v ?? _deviceInputName;
+                      _watchInputIndex = v;
+                      _deviceInputName = _inputNameAt(m, v);
                     } else {
-                      _deviceChannelName = v ?? _deviceChannelName;
+                      _watchChannelIndex = v;
+                      _deviceChannelName = _channelNameAt(m, v);
                     }
                   }),
                 ),

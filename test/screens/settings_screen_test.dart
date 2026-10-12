@@ -49,8 +49,11 @@ void main() {
 
   late Directory dir;
 
+  /// Where the stubbed "Save as" dialog drops the exported bytes. The real
+  /// service uses a meaningful, unique name ([BackupService.fileNameAt]); the
+  /// stub keeps it deterministic for the test.
   String backupPath(Directory d) =>
-      '${d.path}${Platform.pathSeparator}${BackupService.fileName}';
+      '${d.path}${Platform.pathSeparator}${BackupService.filePrefix}_test.json';
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
@@ -198,7 +201,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1000));
     await tester.pumpAndSettle();
 
-    expect(File(backupPath(dir)).existsSync(), isTrue);
+    // The file name is meaningful/unique (location + version + timestamp);
+    // the save stub writes to the fixed `backupPath`, so assert on the bytes
+    // the service produced instead. Backups must be written and valid.
+    final saved = File(backupPath(dir));
+    expect(saved.existsSync(), isTrue);
+    expect(BackupService.parseBackupBytes(saved.readAsBytesSync()), isNotNull);
+    expect(BackupService.isBackupFileName(BackupService.fileName), isTrue);
     expect(find.text('Backup completed.'), findsOneWidget);
   });
 }

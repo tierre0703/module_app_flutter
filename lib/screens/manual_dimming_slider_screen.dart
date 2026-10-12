@@ -27,7 +27,11 @@ class _ManualDimmingSliderScreenState extends State<ManualDimmingSliderScreen> {
   int? _dragValue;
 
   (DeviceModule, int)? get _targetRef => dimmerTargetRef(
-      ModuleStore.shared.modules, widget.scenario.sliderTargetName);
+        ModuleStore.shared.modules,
+        moduleIndex: widget.scenario.sliderModuleIndex,
+        channelIndex: widget.scenario.sliderChannelIndex,
+        targetName: widget.scenario.sliderTargetName,
+      );
 
   ChannelOutput? get _target => _targetRef?.$1.channels[_targetRef!.$2];
 

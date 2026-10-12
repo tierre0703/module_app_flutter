@@ -413,13 +413,20 @@ class BackupService {
   /// [defaultBackupDirectory]). Returns the written [File].
   ///
   /// The file is named after the current location, format version and timestamp
-  /// ([fileNameAt]), so successive backups never overwrite each other.
+  /// ([fileNameAt]), so successive backups never overwrite each other. Two
+  /// backups taken inside the same second get a `_2`, `_3`, ... suffix instead.
   Future<File> backup({Directory? directory}) async {
     final dir = directory ?? await defaultBackupDirectory();
     if (!await dir.exists()) await dir.create(recursive: true);
     final now = DateTime.now();
-    final file = File('${dir.path}${Platform.pathSeparator}'
-        '${fileNameAt(now, locationName: SettingsStore.shared.locationName)}');
+    final base = fileNameAt(now, locationName: SettingsStore.shared.locationName);
+    var file = File('${dir.path}${Platform.pathSeparator}$base');
+    var collision = 2;
+    while (await file.exists()) {
+      file = File('${dir.path}${Platform.pathSeparator}'
+          '${base.substring(0, base.length - '.json'.length)}_$collision.json');
+      collision++;
+    }
     await file.writeAsBytes(await exportBytes());
     return file;
   }

@@ -5,8 +5,11 @@
 // just that a scenario ran but the detail and success/failure of each action
 // (brief section 2.4).
 //
-// Actions are resolved by module / output name against the app-wide module
-// store, then dispatched through each module's persistent [ModuleCommandService].
+// Actions target their module and output/input by *index* (a position in the
+// app-wide fleet + a channel/input position), so renaming a module or an
+// output never breaks the link. Actions saved before index wiring existed
+// (`moduleIndex`/`channelIndex`/`inputIndex` == -1) still resolve by name as a
+// fallback.
 import 'package:flutter/foundation.dart';
 
 import '../models/models.dart';
@@ -70,9 +73,10 @@ class ScenarioRunner {
 
   Future<ScenarioActionResult> _runAction(
       Scenario scenario, ScenarioAction action) async {
+    final modules = ModuleStore.shared.modules;
     final description = '${action.moduleName}: ${action.summary}';
 
-    final module = _resolveModule(action.moduleName);
+    final module = _resolveModule(modules, action);
     if (module == null) {
       return ScenarioActionResult(
         description: description,
@@ -81,12 +85,10 @@ class ScenarioRunner {
       );
     }
 
-    final channelIndex = action.isInputAction
-        ? -1
-        : module.channels.indexWhere((c) => c.name == action.channelName);
-    final inputIndex = action.isInputAction
-        ? module.inputs.indexWhere((i) => i.name == action.inputName)
-        : -1;
+    final channelIndex =
+        action.isInputAction ? -1 : _resolveChannelIndex(module, action);
+    final inputIndex =
+        action.isInputAction ? _resolveInputIndex(module, action) : -1;
     if (!action.isInputAction && channelIndex < 0) {
       return ScenarioActionResult(
         description: description,
@@ -196,10 +198,33 @@ class ScenarioRunner {
     return service.setVirtualInputState(moduleId, index, false);
   }
 
-  DeviceModule? _resolveModule(String moduleName) {
-    for (final m in ModuleStore.shared.modules) {
-      if (m.name.toLowerCase() == moduleName.toLowerCase()) return m;
+  DeviceModule? _resolveModule(List<DeviceModule> modules, ScenarioAction action) {
+    // Prefer the stored fleet index (stable across renames); fall back to the
+    // saved name for actions created before index wiring existed.
+    final byIndex = moduleAtIndex(modules, action.moduleIndex);
+    if (byIndex != null) return byIndex;
+    for (final m in modules) {
+      if (m.name.toLowerCase() == action.moduleName.toLowerCase()) return m;
     }
     return null;
+  }
+
+  /// Resolves the output index an action targets: its stored [channelIndex]
+  /// when valid, otherwise a legacy match on the saved output name.
+  int _resolveChannelIndex(DeviceModule module, ScenarioAction action) {
+    if (action.channelIndex >= 0 &&
+        action.channelIndex < module.channels.length) {
+      return action.channelIndex;
+    }
+    return module.channels.indexWhere((c) => c.name == action.channelName);
+  }
+
+  /// Resolves the input index an action targets: its stored [inputIndex] when
+  /// valid, otherwise a legacy match on the saved input name.
+  int _resolveInputIndex(DeviceModule module, ScenarioAction action) {
+    if (action.inputIndex >= 0 && action.inputIndex < module.inputs.length) {
+      return action.inputIndex;
+    }
+    return module.inputs.indexWhere((i) => i.name == action.inputName);
   }
 }

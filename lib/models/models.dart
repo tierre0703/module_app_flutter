@@ -56,6 +56,28 @@ extension ModuleTypeX on ModuleType {
   }
 }
 
+/// The module at [index] in [modules], or null when [index] is missing or out
+/// of range (e.g. the module was deleted).
+DeviceModule? moduleAtIndex(List<DeviceModule> modules, int? index) {
+  if (index == null || index < 0 || index >= modules.length) return null;
+  return modules[index];
+}
+
+/// The fleet position of [module], or -1 when it is not part of [modules].
+///
+/// Scenarios and automations store this index (rather than the module's name)
+/// so a device-list change never rewires an action to a same-named module.
+int moduleIndexOf(List<DeviceModule> modules, DeviceModule? module) {
+  if (module == null) return -1;
+  final index = modules.indexOf(module);
+  if (index >= 0) return index;
+  // Tolerate a not-identical instance with the same id (e.g. a refreshed copy).
+  for (var i = 0; i < modules.length; i++) {
+    if (modules[i].id == module.id) return i;
+  }
+  return -1;
+}
+
 /// Connection / availability indicator shown throughout the app: green
 /// (online - the 5008 Control API socket is live), grey/amber (unknown - the
 /// module was online, but its 5008 API is currently broken / not answering) or
@@ -687,21 +709,45 @@ extension InputActionStateX on InputActionState {
       };
 }
 
-/// Resolves the [ChannelOutput] a manual-dimmer scenario's [Scenario.sliderTargetName]
-/// points at. Target names use the `"<channel> - <module>"` format produced by
-/// the scenario editor; returns null when no dimmer output matches.
-ChannelOutput? dimmerTargetChannel(
-    List<DeviceModule> modules, String targetName) {
-  final ref = dimmerTargetRef(modules, targetName);
+/// Resolves the [ChannelOutput] a manual-dimmer scenario's target points at,
+/// or null when the module/channel no longer exists.
+///
+/// Targets are wired by *index* ([Scenario.sliderModuleIndex] +
+/// [Scenario.sliderChannelIndex]) so a rename never breaks the link; a legacy
+/// saved name ([Scenario.sliderTargetName]) is still accepted as a fallback.
+ChannelOutput? dimmerTargetChannel(List<DeviceModule> modules,
+    {int? moduleIndex, int? channelIndex, String targetName = ''}) {
+  final ref = dimmerTargetRef(modules,
+      moduleIndex: moduleIndex,
+      channelIndex: channelIndex,
+      targetName: targetName);
   if (ref == null) return null;
   return ref.$1.channels[ref.$2];
 }
 
 /// Resolves the owning module and zero-based channel index a manual-dimmer
-/// scenario's [Scenario.sliderTargetName] points at, so `set_dimmer_level` can
-/// be issued on the right output.
+/// scenario's target points at, so `set_dimmer_level` can be issued on the
+/// right output.
+///
+/// Prefers the stored [moduleIndex] (a position in [modules]) + [channelIndex]
+/// pair, so the link survives module/output renames. Only when no index is
+/// stored (a legacy saved scenario) does it fall back to matching the
+/// `"<channel> - <module>"` [targetName] format.
 (DeviceModule, int)? dimmerTargetRef(
-    List<DeviceModule> modules, String targetName) {
+    List<DeviceModule> modules, {
+    int? moduleIndex,
+    int? channelIndex,
+    String targetName = '',
+  }) {
+  if (moduleIndex != null &&
+      moduleIndex >= 0 &&
+      moduleIndex < modules.length &&
+      channelIndex != null &&
+      channelIndex >= 0 &&
+      channelIndex < modules[moduleIndex].channels.length) {
+    return (modules[moduleIndex], channelIndex);
+  }
+  if (targetName.isEmpty) return null;
   for (final module in modules) {
     if (module.type != ModuleType.dimmerDc &&
         module.type != ModuleType.dimmerAc) {
@@ -718,31 +764,57 @@ ChannelOutput? dimmerTargetChannel(
 }
 
 /// A single command executed by a scenario or automation.
+///
+/// The target is wired by **index**, not by name: [moduleIndex] is the
+/// module's position in the app-wide fleet and [channelIndex] / [inputIndex]
+/// is the output/input position on that module. [moduleName], [channelName]
+/// and [inputName] are kept only as display labels (and as a fallback for
+/// scenarios saved before index wiring existed), so renaming a module or an
+/// output never breaks the action.
 class ScenarioAction {
   ScenarioAction({
     required this.moduleName,
     required this.channelName,
     required this.icon,
     required this.isDimmerAction,
+    this.moduleIndex = -1,
+    this.channelIndex = -1,
     this.turnOn = true,
     this.brightnessPct = 100,
     this.isInputAction = false,
     this.inputName = '',
+    this.inputIndex = -1,
     this.inputState = InputActionState.on,
   });
 
+  /// Display label; also the legacy fallback when [moduleIndex] is unknown.
   final String moduleName;
+
+  /// Display label; also the legacy fallback when [channelIndex] is unknown.
   final String channelName;
+
+  /// Position of the target module in the fleet, or -1 when not wired by index.
+  final int moduleIndex;
+
+  /// Position of the target output on the module, or -1 when not wired.
+  final int channelIndex;
+
   final IconData icon;
   final bool isDimmerAction;
   final bool turnOn;
   final int brightnessPct;
 
   /// True when this action drives a virtual input instead of an output
-  /// channel. When set, [channelName] is unused and [inputName]/[inputState]
-  /// describe the target.
+  /// channel. When set, [channelName]/[channelIndex] are unused and
+  /// [inputName]/[inputIndex]/[inputState] describe the target.
   final bool isInputAction;
+
+  /// Display label; also the legacy fallback when [inputIndex] is unknown.
   final String inputName;
+
+  /// Position of the target input on the module, or -1 when not wired.
+  final int inputIndex;
+
   final InputActionState inputState;
 
   String get summary => isInputAction
@@ -753,25 +825,31 @@ class ScenarioAction {
 
   Map<String, Object?> toJson() => {
         'moduleName': moduleName,
+        'moduleIndex': moduleIndex,
         'channelName': channelName,
+        'channelIndex': channelIndex,
         'icon': iconToJson(icon),
         'isDimmerAction': isDimmerAction,
         'turnOn': turnOn,
         'brightnessPct': brightnessPct,
         'isInputAction': isInputAction,
         'inputName': inputName,
+        'inputIndex': inputIndex,
         if (isInputAction) 'inputState': inputState.name,
       };
 
   factory ScenarioAction.fromJson(Map<String, Object?> json) => ScenarioAction(
         moduleName: json['moduleName'] as String,
+        moduleIndex: (json['moduleIndex'] as num?)?.toInt() ?? -1,
         channelName: json['channelName'] as String,
+        channelIndex: (json['channelIndex'] as num?)?.toInt() ?? -1,
         icon: iconFromJson(json['icon']),
         isDimmerAction: json['isDimmerAction'] as bool? ?? false,
         turnOn: json['turnOn'] as bool? ?? true,
         brightnessPct: json['brightnessPct'] as int? ?? 100,
         isInputAction: json['isInputAction'] as bool? ?? false,
         inputName: json['inputName'] as String? ?? '',
+        inputIndex: (json['inputIndex'] as num?)?.toInt() ?? -1,
         inputState: switch (json['inputState'] as String?) {
           'on' => InputActionState.on,
           'off' => InputActionState.off,
@@ -792,6 +870,8 @@ class Scenario {
     this.showInHome = false,
     this.backgroundColor,
     List<ScenarioAction>? actions,
+    this.sliderModuleIndex = -1,
+    this.sliderChannelIndex = -1,
     this.sliderTargetName = '',
     this.sliderValue = 0,
   }) : actions = actions ?? <ScenarioAction>[];
@@ -809,7 +889,11 @@ class Scenario {
 
   final List<ScenarioAction> actions;
 
-  // Only used when [type] == ScenarioType.manualSlider.
+  // Only used when [type] == ScenarioType.manualSlider. The dimmer output is
+  // wired by index ([sliderModuleIndex] + [sliderChannelIndex]); the name is
+  // kept for display and as the legacy fallback.
+  int sliderModuleIndex;
+  int sliderChannelIndex;
   String sliderTargetName;
   int sliderValue;
 
@@ -822,6 +906,8 @@ class Scenario {
         'showInHome': showInHome,
         'backgroundColor': backgroundColor?.toARGB32(),
         'actions': actions.map((a) => a.toJson()).toList(),
+        'sliderModuleIndex': sliderModuleIndex,
+        'sliderChannelIndex': sliderChannelIndex,
         'sliderTargetName': sliderTargetName,
         'sliderValue': sliderValue,
       };
@@ -843,6 +929,9 @@ class Scenario {
           for (final a in json['actions'] as List? ?? const [])
             ScenarioAction.fromJson((a as Map).cast<String, Object?>()),
         ],
+        sliderModuleIndex: (json['sliderModuleIndex'] as num?)?.toInt() ?? -1,
+        sliderChannelIndex:
+            (json['sliderChannelIndex'] as num?)?.toInt() ?? -1,
         sliderTargetName: json['sliderTargetName'] as String? ?? '',
         sliderValue: json['sliderValue'] as int? ?? 0,
       );
@@ -859,9 +948,12 @@ class Automation {
     this.scheduleHour,
     this.scheduleMinute,
     this.watchModuleName,
+    this.watchModuleIndex = -1,
     this.watchIsInput = false,
     this.watchInputName,
+    this.watchInputIndex = -1,
     this.watchChannelName,
+    this.watchChannelIndex = -1,
     this.watchState = true,
     List<ScenarioAction>? actions,
   }) : actions = actions ?? <ScenarioAction>[];
@@ -881,24 +973,36 @@ class Automation {
   /// [triggerType] == AutomationTriggerType.time.
   int? scheduleMinute;
 
-  /// Name of the module the device-state trigger watches. Only meaningful when
-  /// [triggerType] == AutomationTriggerType.deviceState; null means "any
-  /// module" (legacy automations saved before module selection existed).
+  /// Display label of the module the device-state trigger watches (kept for the
+  /// saved trigger summary); null means "any module" (legacy automations saved
+  /// before module selection existed).
   String? watchModuleName;
+
+  /// Position of the watched module in the fleet, or -1 when not wired by
+  /// index. The trigger resolves by this index so renaming a module never
+  /// breaks the rule.
+  int watchModuleIndex;
 
   /// Whether the device-state trigger watches a [PhysicalInput] (true) or a
   /// [ChannelOutput] (false).
   bool watchIsInput;
 
-  /// [PhysicalInput] name watched by an input-based device-state trigger. Only
-  /// meaningful when [triggerType] == AutomationTriggerType.deviceState and
-  /// [watchIsInput] is true; use [watchChannelName] for output triggers.
+  /// [PhysicalInput] display label watched by an input-based device-state
+  /// trigger. Only meaningful when [triggerType] ==
+  /// AutomationTriggerType.deviceState and [watchIsInput] is true; use
+  /// [watchChannelIndex]/[watchChannelName] for output triggers.
   String? watchInputName;
 
-  /// Output name watched by a device-state trigger. Only meaningful when
-  /// [triggerType] == AutomationTriggerType.deviceState and [watchIsInput] is
-  /// false.
+  /// Position of the watched input on the module, or -1 when not wired.
+  int watchInputIndex;
+
+  /// Output display label watched by a device-state trigger. Only meaningful
+  /// when [triggerType] == AutomationTriggerType.deviceState and [watchIsInput]
+  /// is false.
   String? watchChannelName;
+
+  /// Position of the watched output on the module, or -1 when not wired.
+  int watchChannelIndex;
 
   /// The state change that fires the rule: true = fires when the watched
   /// target turns ON, false = fires when it turns OFF.
@@ -919,9 +1023,12 @@ class Automation {
         'scheduleHour': scheduleHour,
         'scheduleMinute': scheduleMinute,
         'watchModuleName': watchModuleName,
+        'watchModuleIndex': watchModuleIndex,
         'watchIsInput': watchIsInput,
         'watchInputName': watchInputName,
+        'watchInputIndex': watchInputIndex,
         'watchChannelName': watchChannelName,
+        'watchChannelIndex': watchChannelIndex,
         'watchState': watchState,
         'actions': actions.map((a) => a.toJson()).toList(),
       };
@@ -936,9 +1043,12 @@ class Automation {
         scheduleHour: (json['scheduleHour'] as num?)?.toInt(),
         scheduleMinute: (json['scheduleMinute'] as num?)?.toInt(),
         watchModuleName: json['watchModuleName'] as String?,
+        watchModuleIndex: (json['watchModuleIndex'] as num?)?.toInt() ?? -1,
         watchIsInput: json['watchIsInput'] as bool? ?? false,
         watchInputName: json['watchInputName'] as String?,
+        watchInputIndex: (json['watchInputIndex'] as num?)?.toInt() ?? -1,
         watchChannelName: json['watchChannelName'] as String?,
+        watchChannelIndex: (json['watchChannelIndex'] as num?)?.toInt() ?? -1,
         watchState: json['watchState'] as bool? ?? true,
         actions: [
           for (final a in json['actions'] as List? ?? const [])

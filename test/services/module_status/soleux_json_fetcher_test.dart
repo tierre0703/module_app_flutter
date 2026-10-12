@@ -146,11 +146,22 @@ void main() {
             id: 'd1c1', name: 'Mood Light', icon: Icons.lightbulb, stepSize: 5),
       ],
     );
-    final channel =
-        dimmerTargetChannel([module], 'Mood Light - Cabin Dimmer 12V');
+    final channel = dimmerTargetChannel([module],
+        moduleIndex: 0,
+        channelIndex: 0,
+        targetName: 'Mood Light - Cabin Dimmer 12V');
     expect(channel, isNotNull);
     expect(channel!.stepSize, 5);
-    expect(dimmerTargetChannel([module], 'Mood Light - Other'), isNull);
+    // Wired by index: the rename does not break the link.
+    expect(dimmerTargetChannel([module], moduleIndex: 0, channelIndex: 0),
+        isNotNull);
+    // Legacy name fallback still works, and an unknown name is null.
+    expect(
+        dimmerTargetChannel([module],
+            targetName: 'Mood Light - Cabin Dimmer 12V'),
+        isNotNull);
+    expect(dimmerTargetChannel([module], targetName: 'Mood Light - Other'),
+        isNull);
   });
 
   test('trims channels beyond the reported count', () {
