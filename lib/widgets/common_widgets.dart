@@ -831,9 +831,16 @@ class _InputFieldCardState extends State<InputFieldCard> {
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        // Leading: the enable/disable toggle switch (the card's left edge).
+        // Trailing: the press/play action button (the card's right edge).
+        padding: const EdgeInsets.fromLTRB(4, 8, 12, 8),
         child: Row(
           children: [
+            Switch(
+              value: enabled,
+              onChanged: widget.onEnabledChanged,
+            ),
+            const SizedBox(width: 4),
             Expanded(
               child: InkWell(
                 onTap: widget.onEdit,
@@ -932,11 +939,6 @@ class _InputFieldCardState extends State<InputFieldCard> {
                           : scheme.onSecondaryContainer,
                 ),
               ),
-            ),
-            const SizedBox(width: 4),
-            Switch(
-              value: enabled,
-              onChanged: widget.onEnabledChanged,
             ),
           ],
         ),
