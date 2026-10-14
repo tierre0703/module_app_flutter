@@ -32,12 +32,30 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>Soleux Device Manager lets you capture a file with the camera when you choose to do so. Captured items are used only for the action you requested and are never uploaded or shared.</string>
+
+	<!-- Local network: the app discovers and talks to Soleux modules directly
+	     on the LAN (TCP Control API + mDNS/broadcast discovery). -->
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Soleux Device Manager broadcasts on your local network and connects to Soleux PDU modules to discover, configure and monitor them.</string>
+	<string>Soleux Device Manager broadcasts on your local network and connects to your Soleux modules to discover, configure, monitor and control them.</string>
+
+	<!-- Location: Soleux Device Manager does not use your location itself. The
+	     bundled file-picker / media libraries link the CoreLocation API, so App
+	     Store validation requires a purpose string. The location is never read,
+	     stored or shared. -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Soleux Device Manager does not access your location. This is a harmless system requirement from a bundled file-picker library; your location is never read, stored or shared.</string>
+
+	<!-- Photo library: the bundled file-picker library links the photo-library
+	     APIs, so a purpose string is required. The app only opens the document
+	     picker to import backup files. -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Soleux Device Manager lets you select a file to import from your photo library when you choose to do so. Selected items are used only for the action you requested and are never uploaded or shared.</string>
+
+	<!-- Camera: linked by the same bundled file-picker library. The app never
+	     opens the camera on its own. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Soleux Device Manager lets you capture a file with the camera when you choose to do so. Captured items are used only for the action you requested and are never uploaded or shared.</string>
+
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UIBackgroundModes</key>
@@ -45,8 +63,16 @@
 		<string>fetch</string>
 		<string>processing</string>
 	</array>
+
+	<!-- Backup/restore external storage. Backups are written and read through
+	     the system document picker (UIDocumentPickerViewController), which runs
+	     out-of-process and needs no Info.plist permission. These keys instead
+	     expose the app's own Documents folder (the default backup location)
+	     through the Files app so a backup can be exported, moved to a new
+	     phone and imported. -->
 	<key>UIFileSharingEnabled</key>
 	<true/>
+
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -84,39 +110,6 @@
 		<string>UIInterfaceOrientationPortraitUpsideDown</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>CADisableMinimumFrameDurationOnPhone</key>
-	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Soleux Device Manager broadcasts on your local network and connects to Soleux PDU modules to discover, configure and monitor them.</string>
-	<!-- The bundled file-picker library links the photo-library and camera
-	     APIs, so App Store validation requires purpose strings even though the
-	     app only opens the document picker (FileType.custom) to import backup
-	     files. These strings describe that behavior accurately. -->
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Soleux Device Manager lets you select a file to import from your photo library when you choose to do so. Selected items are used only for the action you requested and are never uploaded or shared.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Soleux Device Manager lets you capture a file with the camera when you choose to do so. Captured items are used only for the action you requested and are never uploaded or shared.</string>
-	<!-- Backup/restore external storage. Backups are written and read through
-	     the system document picker (UIDocumentPickerViewController), which runs
-	     out-of-process and needs no Info.plist permission. These keys instead
-	     expose the app's own Documents folder (the default backup location)
-	     through the Files app so a backup can be exported, moved to a new
-	     phone and imported. -->
-	<key>UIFileSharingEnabled</key>
-	<true/>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<true/>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>fetch</string>
-		<string>processing</string>
-	</array>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>com.soleux.sdm.statusPoll</string>
 	</array>
 </dict>
 </plist>
