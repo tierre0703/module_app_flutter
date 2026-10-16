@@ -266,7 +266,7 @@ abstract class AppTheme {
         hintStyle: TextStyle(color: onSurface.withValues(alpha: 0.4)),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: isLight ? glass.withValues(alpha: 0.96) : glass,
+        backgroundColor: isLight ? glass.withValues(alpha: 0.96) : glass.withValues(alpha: 0.96),
         surfaceTintColor: Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
