@@ -16,6 +16,8 @@ import '../services/module_status/module_tcp_service.dart';
 import '../services/module_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
+import '../widgets/system_log_screen.dart';
+import 'channel_editor_screen.dart';
 
 class HubControlScreen extends StatefulWidget {
   const HubControlScreen({super.key, required this.module});
@@ -32,6 +34,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
   HubDeviceInfo? _deviceInfo;
   bool _busy = false;
   bool _offline = false;
+  bool _editDialogOpen = false;
 
   @override
   void initState() {
@@ -86,9 +89,10 @@ class _HubControlScreenState extends State<HubControlScreen> {
       final infoResp = await _hubClient!.getDeviceInfo();
       if (infoResp.ok && infoResp.result != null) {
         _deviceInfo = HubDeviceInfo.fromResult(infoResp.result!);
-        if (_deviceInfo!.name != null && _deviceInfo!.name!.isNotEmpty) {
+        final hubName = _deviceInfo!.name;
+        if (hubName != null && hubName.isNotEmpty) {
           ModuleStore.shared.update(module.id, (m) {
-            m.name = _deviceInfo!.name!;
+            m.name = hubName;
           });
         }
       }
@@ -164,6 +168,34 @@ class _HubControlScreenState extends State<HubControlScreen> {
     }
   }
 
+  Future<void> _editChannel(int index) async {
+    final module = ModuleStore.shared.byId(widget.module.id) ?? widget.module;
+    if (index < 0 || index >= module.channels.length) return;
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+          builder: (_) => ChannelEditorScreen(
+              channel: module.channels[index],
+              module: module,
+              index: index)),
+    );
+    if (saved == true) {
+      await ModuleStore.shared.update(widget.module.id, (_) {});
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _editModuleInfo() async {
+    if (_editDialogOpen) return;
+    _editDialogOpen = true;
+    try {
+      final module = ModuleStore.shared.byId(widget.module.id) ?? widget.module;
+      final saved = await showEditModuleInfoDialog(context, module);
+      if (saved && mounted) setState(() {});
+    } finally {
+      _editDialogOpen = false;
+    }
+  }
+
   Future<void> _toggleOutput(int index, bool next) async {
     final client = _hubClient;
     if (client == null || !client.isConnected) return;
@@ -201,6 +233,21 @@ class _HubControlScreenState extends State<HubControlScreen> {
     }
   }
 
+  Future<void> _toggleModbusOutput(int index, bool next) async {
+    final client = _hubClient;
+    if (client == null || !client.isConnected) return;
+    final channel = index + 1;
+    try {
+      final response = await client.setModbusOutput(channel, next);
+      if (response.ok) {
+        await _fetchDashboard();
+        if (mounted) setState(() {});
+      }
+    } catch (e, st) {
+      debugPrint('HubControlScreen: set_modbus_output failed: $e\n$st');
+    }
+  }
+
   Future<void> _restartModbusOutput(int index) async {
     final client = _hubClient;
     if (client == null || !client.isConnected) return;
@@ -229,9 +276,16 @@ class _HubControlScreenState extends State<HubControlScreen> {
         title: Text(module.name),
         actions: [
           IconButton(
-              icon: Icon(_busy ? Icons.sync : Icons.refresh),
+              icon: const Icon(Icons.refresh),
               tooltip: l10n.relayRefreshTooltip,
-              onPressed: _busy ? null : _refresh),
+              onPressed: _refresh),
+          IconButton(
+              icon: const Icon(Icons.receipt_long_outlined),
+              tooltip: l10n.systemLogTooltip,
+              onPressed: () => showSystemLogScreen(context, module)),
+          IconButton(
+              icon: const Icon(Icons.edit_outlined),
+              onPressed: _editModuleInfo),
         ],
       ),
       body: SafeArea(
@@ -239,22 +293,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.outerPadding),
           children: [
-            if (_offline)
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Row(children: [
-                    StatusDot(
-                        status: ConnectionStatus.offline, size: 14),
-                    const SizedBox(width: 8),
-                    Expanded(
-                        child: Text(
-                            '${module.name} is offline - check connection')),
-                  ]),
-                ),
-              )
-            else
-              ModuleStatusHeader(module: module),
+            ModuleStatusHeader(module: module),
 
             if (di != null) ...[
               const SizedBox(height: 16),
@@ -271,7 +310,8 @@ class _HubControlScreenState extends State<HubControlScreen> {
                       if (di!.model != null)
                         _infoRow('Model', di!.model!, onSurface),
                       if (di!.appFirmware != null)
-                        _infoRow('Firmware', di!.appFirmware!, onSurface),
+                        _infoRow(
+                            'Firmware', di!.appFirmware!, onSurface),
                       if (di!.serial != null)
                         _infoRow('Serial', di!.serial!, onSurface),
                       if (di!.mac != null)
@@ -328,11 +368,15 @@ class _HubControlScreenState extends State<HubControlScreen> {
                 Padding(
                   padding:
                       const EdgeInsets.only(bottom: AppSpacing.betweenCards),
-                  child: _buildOutputRow(
-                    i,
-                    dash!.outputs[i],
-                    onSurface,
-                    l10n,
+                  child: _HubOutputRow(
+                    index: i,
+                    output: dash!.outputs[i],
+                    onToggle: () => _toggleOutput(
+                        i, !dash!.outputs[i].state),
+                    onPulse: () => _pulseOutput(i),
+                    onEdit: () => _editChannel(i),
+                    l10n: l10n,
+                    onSurface: onSurface,
                   ),
                 ),
             ],
@@ -345,11 +389,15 @@ class _HubControlScreenState extends State<HubControlScreen> {
                 Padding(
                   padding:
                       const EdgeInsets.only(bottom: AppSpacing.betweenCards),
-                  child: _buildModbusRow(
-                    i,
-                    dash!.modbusOutputs[i],
-                    onSurface,
-                    l10n,
+                  child: _HubModbusOutputRow(
+                    index: i,
+                    output: dash!.modbusOutputs[i],
+                    onToggle: () => _toggleModbusOutput(
+                        i, !dash!.modbusOutputs[i].state),
+                    onRestart: () => _restartModbusOutput(i),
+                    onEdit: () => _editChannel(i),
+                    l10n: l10n,
+                    onSurface: onSurface,
                   ),
                 ),
             ],
@@ -392,142 +440,161 @@ class _HubControlScreenState extends State<HubControlScreen> {
                   style: const TextStyle(fontSize: 12))),
         ]),
       );
+}
 
-  Widget _buildOutputRow(
-    int index,
-    HubOutputState output,
-    Color onSurface,
-    AppLocalizations l10n,
-  ) {
-    final bool state = output.state;
-    final bool turnOffDisabled = output.turnOffDisable;
+/// A single normal-output row matching the relay screen's _OutputRow style.
+/// ON/OFF button, Pulse button and edit button are all in the same row.
+class _HubOutputRow extends StatelessWidget {
+  const _HubOutputRow({
+    required this.index,
+    required this.output,
+    required this.onToggle,
+    required this.onPulse,
+    required this.onEdit,
+    required this.l10n,
+    required this.onSurface,
+  });
+
+  final int index;
+  final HubOutputState output;
+  final VoidCallback onToggle;
+  final VoidCallback onPulse;
+  final VoidCallback onEdit;
+  final AppLocalizations l10n;
+  final Color onSurface;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = output.state;
+    final turnOffDisabled = output.turnOffDisable;
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                IconAvatar(
-                    icon: Icons.electrical_services,
-                    filled: state),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(output.name.isNotEmpty
-                              ? output.name
-                              : 'Output ${index + 1}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 16)),
-                      const SizedBox(height: 2),
-                      Text('Channel ${output.channel}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: onSurface.withValues(alpha: 0.5))),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  width: 88,
-                  height: 48,
-                  child: state
-                      ? FilledButton(
-                          onPressed: turnOffDisabled
-                              ? null
-                              : () => _toggleOutput(index, false),
-                          child: Text(l10n.on))
-                      : OutlinedButton(
-                          onPressed: () => _toggleOutput(index, true),
-                          child: Text(l10n.off)),
-                ),
-              ],
+            IconAvatar(
+                icon: Icons.electrical_services,
+                filled: state),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(output.name.isNotEmpty
+                          ? output.name
+                          : 'Output ${index + 1}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  const SizedBox(height: 2),
+                  Text('Channel ${output.channel}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: onSurface.withValues(alpha: 0.5))),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                OutlinedButton(
-                  onPressed: () => _pulseOutput(index),
-                  child: const Text('Pulse'),
-                ),
-              ],
+            SizedBox(
+              width: 88,
+              height: 48,
+              child: state
+                  ? FilledButton(
+                      onPressed: turnOffDisabled
+                          ? null
+                          : onToggle,
+                      child: Text(l10n.on))
+                  : OutlinedButton(
+                      onPressed: onToggle,
+                      child: Text(l10n.off)),
             ),
+            OutlinedButton(
+              onPressed: onPulse,
+              child: const Text('Pulse'),
+            ),
+            IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: onEdit),
           ],
         ),
       ),
     );
   }
+}
 
-  Widget _buildModbusRow(
-    int index,
-    HubOutputState output,
-    Color onSurface,
-    AppLocalizations l10n,
-  ) {
-    final bool state = output.state;
-    final bool turnOffDisabled = output.turnOffDisable;
-    final bool restartDisabled = output.restartDisable;
+/// A single Modbus output row matching the relay screen's _OutputRow style.
+class _HubModbusOutputRow extends StatelessWidget {
+  const _HubModbusOutputRow({
+    required this.index,
+    required this.output,
+    required this.onToggle,
+    required this.onRestart,
+    required this.onEdit,
+    required this.l10n,
+    required this.onSurface,
+  });
+
+  final int index;
+  final HubOutputState output;
+  final VoidCallback onToggle;
+  final VoidCallback onRestart;
+  final VoidCallback onEdit;
+  final AppLocalizations l10n;
+  final Color onSurface;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = output.state;
+    final turnOffDisabled = output.turnOffDisable;
+    final restartDisabled = output.restartDisable;
 
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                IconAvatar(
-                    icon: Icons.electrical_services,
-                    filled: state),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(output.name.isNotEmpty
-                              ? output.name
-                              : 'Modbus Output ${index + 1}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 16)),
-                      const SizedBox(height: 2),
-                      Text('Channel ${output.channel}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: onSurface.withValues(alpha: 0.5))),
-                    ],
-                  ),
-                ),
-                SizedBox(
-                  width: 88,
-                  height: 48,
-                  child: state
-                      ? FilledButton(
-                          onPressed: turnOffDisabled
-                              ? null
-                              : () => _toggleOutput(index, false),
-                          child: Text(l10n.on))
-                      : OutlinedButton(
-                          onPressed: () => _toggleOutput(index, true),
-                          child: Text(l10n.off)),
-                ),
-              ],
+            IconAvatar(
+                icon: Icons.electrical_services,
+                filled: state),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(output.name.isNotEmpty
+                          ? output.name
+                          : 'Modbus Output ${index + 1}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  const SizedBox(height: 2),
+                  Text('Channel ${output.channel}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: onSurface.withValues(alpha: 0.5))),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                OutlinedButton(
-                  onPressed: restartDisabled
-                      ? null
-                      : () => _restartModbusOutput(index),
-                  child: const Text('Restart'),
-                ),
-              ],
+            SizedBox(
+              width: 88,
+              height: 48,
+              child: state
+                  ? FilledButton(
+                      onPressed: turnOffDisabled
+                          ? null
+                          : onToggle,
+                      child: Text(l10n.on))
+                  : OutlinedButton(
+                      onPressed: onToggle,
+                      child: Text(l10n.off)),
             ),
+            OutlinedButton(
+              onPressed: restartDisabled
+                  ? null
+                  : onRestart,
+              child: const Text('Restart'),
+            ),
+            IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: onEdit),
           ],
         ),
       ),
