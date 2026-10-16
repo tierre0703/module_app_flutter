@@ -17,6 +17,7 @@ import 'dimmer_ac_screen.dart';
 import 'dimmer_dc_screen.dart';
 import 'relay_control_screen.dart';
 import 'temperature_module_screen.dart';
+import 'hub_control_screen.dart';
 
 /// Pushes the correct dedicated control screen for [module]'s type (brief
 /// section 2.3 "Extended Control Types"). Shared by the Configuration list
@@ -28,6 +29,7 @@ void openModuleDetail(BuildContext context, DeviceModule module) {
     ModuleType.dimmerDc => DimmerDcScreen(module: module),
     ModuleType.dimmerAc => DimmerAcScreen(module: module),
     ModuleType.temperature => TemperatureModuleScreen(module: module),
+    ModuleType.hub => HubControlScreen(module: module),
   };
   Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
 }

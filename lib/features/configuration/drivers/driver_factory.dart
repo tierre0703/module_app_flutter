@@ -25,6 +25,8 @@ class DriverFactory {
           module: module, transport: transport, channels: channels),
       ModuleType.temperature => TemperatureDriver(
           module: module, transport: transport, channels: channels),
+      ModuleType.hub => RelayDriver(
+          module: module, transport: transport, channels: channels),
     };
   }
 }

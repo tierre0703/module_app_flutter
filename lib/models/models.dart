@@ -22,7 +22,7 @@ const List<Color> kScenarioBackgroundPresets = [
 
 /// The five dedicated hardware module types described in the brief
 /// (section 2.3 "Extended Control Types").
-enum ModuleType { relay, blind, dimmerDc, dimmerAc, temperature }
+enum ModuleType { relay, blind, dimmerDc, dimmerAc, temperature, hub }
 
 extension ModuleTypeX on ModuleType {
   String get label {
@@ -37,6 +37,8 @@ extension ModuleTypeX on ModuleType {
         return 'Lighting Dimmer (AC)';
       case ModuleType.temperature:
         return 'Temperature Module';
+      case ModuleType.hub:
+        return 'Modbus HUB';
     }
   }
 
@@ -52,6 +54,8 @@ extension ModuleTypeX on ModuleType {
         return Icons.tune;
       case ModuleType.temperature:
         return Icons.thermostat;
+      case ModuleType.hub:
+        return Icons.electrical_services;
     }
   }
 }

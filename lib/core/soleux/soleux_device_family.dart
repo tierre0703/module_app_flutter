@@ -19,13 +19,14 @@ library;
 
 import '../../models/models.dart';
 
-/// The five Soleux device families supported by the firmware.
+/// The six Soleux device families supported by the firmware.
 enum SoleuxDeviceFamily {
   relayModule,
   dimmer,
   pduEnergyMeter,
   pdu10kw,
-  pduV1;
+  pduV1,
+  modbusHub;
 
   /// The family's discovery GUID (doc/Soleux-Network-Discovery-and-DCP.md,
   /// "Device identities" table).
@@ -37,6 +38,8 @@ enum SoleuxDeviceFamily {
           '56EC974B-1C9F-48C3-B438-BFE976593072',
         SoleuxDeviceFamily.pdu10kw => 'A728DD7D-0DEB-49B9-9B8B-A4556771815F',
         SoleuxDeviceFamily.pduV1 => 'B4A6B160-0CBA-4BD8-873D-EDC9DF895C26',
+        SoleuxDeviceFamily.modbusHub =>
+          '199865F4-45A9-489F-BE72-9D6F75A92B4C',
       };
 
   /// The JSON `hello` `device` value
@@ -47,6 +50,7 @@ enum SoleuxDeviceFamily {
         SoleuxDeviceFamily.pduEnergyMeter => 'pdu_energy_meter',
         SoleuxDeviceFamily.pdu10kw => 'pdu_10kw',
         SoleuxDeviceFamily.pduV1 => 'pdu_v1',
+        SoleuxDeviceFamily.modbusHub => 'modbus_hub',
       };
 
   /// A human-readable family label (used in the Configuration list).
@@ -56,6 +60,7 @@ enum SoleuxDeviceFamily {
         SoleuxDeviceFamily.pduEnergyMeter => 'PDU Energy Meter',
         SoleuxDeviceFamily.pdu10kw => 'PDU 10 kW',
         SoleuxDeviceFamily.pduV1 => 'PDU V1.0',
+        SoleuxDeviceFamily.modbusHub => 'Modbus HUB',
       };
 
   /// The generic app module type a freshly discovered unit should be seeded
@@ -66,6 +71,7 @@ enum SoleuxDeviceFamily {
         SoleuxDeviceFamily.pduEnergyMeter => ModuleType.relay,
         SoleuxDeviceFamily.pdu10kw => ModuleType.relay,
         SoleuxDeviceFamily.pduV1 => ModuleType.relay,
+        SoleuxDeviceFamily.modbusHub => ModuleType.hub,
       };
 
   /// Whether the family exposes live energy metering

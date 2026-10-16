@@ -104,6 +104,38 @@ abstract final class SoleuxJsonActions {
   // PDU Energy Meter.
   static const String getEnergyHistory = 'get_energy_history';
 
+  // Modbus Hub (doc/Modbus_Hub_Control_API.md).
+  static const String getDashboard = 'get_dashboard';
+  static const String setOutput = 'set_output';
+  static const String pulseOutput = 'pulse_output';
+  static const String setModbusOutput = 'set_modbus_output';
+  static const String restartModbusOutput = 'restart_modbus_output';
+  static const String getTag = 'get_tag';
+  static const String setTag = 'set_tag';
+  static const String getSystem = 'get_system';
+  static const String clearSystemLogs = 'clear_system_logs';
+  static const String getSettings = 'get_settings';
+  static const String saveSettings = 'save_settings';
+  static const String settingsAction = 'settings_action';
+  static const String getSecurity = 'get_security';
+  static const String saveSecurity = 'save_security';
+  static const String securityAction = 'security_action';
+  static const String getUsers = 'get_users';
+  static const String saveUser = 'save_user';
+  static const String getUserPermissions = 'get_user_permissions';
+  static const String saveUserPermissions = 'save_user_permissions';
+  static const String getIoConfiguration = 'get_io_configuration';
+  static const String saveIoChannel = 'save_io_channel';
+  static const String rewriteIoHardware = 'rewrite_io_hardware';
+  static const String settingsBackupDownloadBegin =
+      'settings_backup_download_begin';
+  static const String transferDownloadChunk = 'transfer_download_chunk';
+  static const String transferDownloadFinish = 'transfer_download_finish';
+  static const String transferUploadBegin = 'transfer_upload_begin';
+  static const String transferUploadChunk = 'transfer_upload_chunk';
+  static const String transferUploadFinish = 'transfer_upload_finish';
+  static const String transferCommit = 'transfer_commit';
+
   /// Row operations for [SoleuxJsonActions.mutatePageRow].
   static const String opAdd = 'add';
   static const String opUpdate = 'update';

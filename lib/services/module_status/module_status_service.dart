@@ -1192,6 +1192,14 @@ class ModuleStatusService {
       return false;
     }
 
+    // Hub modules use protocol 1, not the standard Control API. Skip the
+    // standard probe for hub modules - the hub control screen handles its
+    // own connection.
+    if (live.type == ModuleType.hub) {
+      _applyReachability(live, alive: false);
+      return false;
+    }
+
     final jsonOk = await _probeSoleuxJson(live);
     if (jsonOk == true) {
       // A JSON-capable device must not keep a duplicate legacy AT+ unit (and

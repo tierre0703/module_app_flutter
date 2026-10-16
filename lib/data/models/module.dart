@@ -1,4 +1,4 @@
-enum ModuleType { relay, blind, dcDimmer, acDimmer, temperature }
+enum ModuleType { relay, blind, dcDimmer, acDimmer, temperature, hub }
 
 enum ModuleStatus { online, offline, unknown }
 

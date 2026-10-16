@@ -99,6 +99,13 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
                 icon: Icons.tune));
       case ModuleType.temperature:
         return [];
+      case ModuleType.hub:
+        return List.generate(
+            8,
+            (i) => ChannelOutput(
+                id: 'new-h$i',
+                name: l10n.addModuleOutput(i + 1),
+                icon: Icons.electrical_services));
     }
   }
 
