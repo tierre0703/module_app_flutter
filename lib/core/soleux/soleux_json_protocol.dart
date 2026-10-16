@@ -127,14 +127,6 @@ abstract final class SoleuxJsonActions {
   static const String getIoConfiguration = 'get_io_configuration';
   static const String saveIoChannel = 'save_io_channel';
   static const String rewriteIoHardware = 'rewrite_io_hardware';
-  static const String settingsBackupDownloadBegin =
-      'settings_backup_download_begin';
-  static const String transferDownloadChunk = 'transfer_download_chunk';
-  static const String transferDownloadFinish = 'transfer_download_finish';
-  static const String transferUploadBegin = 'transfer_upload_begin';
-  static const String transferUploadChunk = 'transfer_upload_chunk';
-  static const String transferUploadFinish = 'transfer_upload_finish';
-  static const String transferCommit = 'transfer_commit';
 
   /// Row operations for [SoleuxJsonActions.mutatePageRow].
   static const String opAdd = 'add';

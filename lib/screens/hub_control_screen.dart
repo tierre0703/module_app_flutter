@@ -4,23 +4,18 @@
 // dashboard with normal outputs and Modbus power outputs, allows ON/OFF,
 // pulse, and restart operations. Uses the Hub-specific JSON API (protocol 1)
 // over TCP port 5008, as documented in doc/Modbus_Hub_Control_API.md.
-//
-// ModuleStatusHeader is imported from common_widgets.dart.
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
-import '../../models/models.dart';
-import '../../services/event_log_store.dart';
-import '../../services/module_host_resolver.dart';
-import '../../services/module_status/module_status_service.dart';
-import '../../services/module_store.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/common_widgets.dart';
-import '../../services/module_status/module_tcp_service.dart';
-import '../../services/module_status/hub_api_protocol.dart' show HubJsonProtocol, HubDashboardData, HubDeviceInfo, HubOutputState, HubCommandResponse;
+import '../models/models.dart';
+import '../services/event_log_store.dart';
+import '../services/module_status/hub_api_protocol.dart';
+import '../services/module_status/module_tcp_service.dart';
+import '../services/module_store.dart';
+import '../theme/app_theme.dart';
+import '../widgets/common_widgets.dart';
 
 class HubControlScreen extends StatefulWidget {
   const HubControlScreen({super.key, required this.module});
@@ -32,19 +27,10 @@ class HubControlScreen extends StatefulWidget {
 }
 
 class _HubControlScreenState extends State<HubControlScreen> {
-  /// The persistent Hub JSON protocol client.
   HubJsonProtocol? _hubClient;
-
-  /// Cached dashboard data, set after a successful get_dashboard.
   HubDashboardData? _dashboard;
-
-  /// Cached device info.
   HubDeviceInfo? _deviceInfo;
-
-  /// True while a command is in-flight.
   bool _busy = false;
-
-  /// True when the module is unreachable on the last probe.
   bool _offline = false;
 
   @override
@@ -60,13 +46,11 @@ class _HubControlScreenState extends State<HubControlScreen> {
     super.dispose();
   }
 
-  /// Connects to the Hub and fetches the dashboard.
   Future<void> _connectAndRefresh() async {
     final module = widget.module;
     final host = module.host;
     final port = module.controlApiPort;
 
-    // Create the TCP connection and protocol handler.
     final connection = ModuleTcpConnection(
       host: host,
       port: port,
@@ -74,7 +58,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
     );
     _hubClient = HubJsonProtocol(connection);
 
-    // Wire the data stream to parse Hub responses.
     connection.dataStream.listen((chunk) {
       final responses = _hubClient!.feed(chunk);
       for (final response in responses) {
@@ -93,8 +76,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
       }
       _offline = false;
 
-      // Step 1: hello — the Hub sends "Soleux JSON API Ready" on connect,
-      // which HubJsonProtocol.feed discards automatically.
       final hello = await _hubClient!.hello();
       if (!hello.ok) {
         _offline = true;
@@ -102,11 +83,9 @@ class _HubControlScreenState extends State<HubControlScreen> {
         return;
       }
 
-      // Step 2: get_device_info
       final infoResp = await _hubClient!.getDeviceInfo();
       if (infoResp.ok && infoResp.result != null) {
         _deviceInfo = HubDeviceInfo.fromResult(infoResp.result!);
-        // Sync the module's name and serial from the Hub.
         if (_deviceInfo!.name != null && _deviceInfo!.name!.isNotEmpty) {
           ModuleStore.shared.update(module.id, (m) {
             m.name = _deviceInfo!.name!;
@@ -114,7 +93,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
         }
       }
 
-      // Step 3: get_dashboard
       await _fetchDashboard();
 
       if (mounted) setState(() {});
@@ -125,7 +103,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
     }
   }
 
-  /// Fetches the dashboard data.
   Future<void> _fetchDashboard() async {
     final client = _hubClient;
     if (client == null || !client.isConnected) return;
@@ -140,15 +117,12 @@ class _HubControlScreenState extends State<HubControlScreen> {
     }
   }
 
-  /// Syncs dashboard data into the ModuleStore so the module card reflects
-  /// live status.
   void _syncToStore() {
     final dash = _dashboard;
     if (dash == null) return;
     ModuleStore.shared.update(widget.module.id, (m) {
       m.status = ConnectionStatus.online;
       m.lastSeenAt = DateTime.now();
-      // Map dashboard outputs to channels.
       while (m.channels.length < dash.outputs.length) {
         m.channels.add(ChannelOutput(
           id: '${m.id}h${m.channels.length}',
@@ -170,10 +144,8 @@ class _HubControlScreenState extends State<HubControlScreen> {
     });
   }
 
-  /// Handles a parsed Hub command response.
   void _handleResponse(HubCommandResponse response) {
-    // Command completers are resolved in HubJsonProtocol.feed - nothing
-    // additional needed here for basic command/response matching.
+    // Completers resolved in HubJsonProtocol.feed
   }
 
   Future<void> _refresh() async {
@@ -181,8 +153,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
     _busy = true;
     setState(() {});
     try {
-      // If the client disconnected, reconnect.
-      if (_hubClient == null || !_hubClient.isConnected) {
+      if (_hubClient == null || !_hubClient!.isConnected) {
         await _connectAndRefresh();
       } else {
         await _fetchDashboard();
@@ -193,17 +164,16 @@ class _HubControlScreenState extends State<HubControlScreen> {
     }
   }
 
-  /// Toggles a normal output.
   Future<void> _toggleOutput(int index, bool next) async {
     final client = _hubClient;
     if (client == null || !client.isConnected) return;
-    final channel = index + 1; // Hub channels are one-based.
+    final channel = index + 1;
+    final dash = _dashboard;
     EventLogStore.shared.recordModuleAction(
       moduleName: widget.module.name,
-      outputName: _dashboard != null &&
-              index < _dashboard!.outputs.length
-          ? _dashboard!.outputs[index].name
-          : 'Output ${channel}',
+      outputName: dash != null && index < dash.outputs.length
+          ? dash.outputs[index].name
+          : 'Output $channel',
       on: next,
     );
     try {
@@ -217,14 +187,12 @@ class _HubControlScreenState extends State<HubControlScreen> {
     }
   }
 
-  /// Pulses a normal output.
   Future<void> _pulseOutput(int index) async {
     final client = _hubClient;
     if (client == null || !client.isConnected) return;
     final channel = index + 1;
     try {
       await client.pulseOutput(channel);
-      // Wait a moment then refresh.
       await Future.delayed(const Duration(seconds: 1500));
       await _fetchDashboard();
       if (mounted) setState(() {});
@@ -233,23 +201,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
     }
   }
 
-  /// Toggles a Modbus power output.
-  Future<void> _toggleModbusOutput(int index, bool next) async {
-    final client = _hubClient;
-    if (client == null || !client.isConnected) return;
-    final channel = index + 1;
-    try {
-      final response = await client.setModbusOutput(channel, next);
-      if (response.ok) {
-        await _fetchDashboard();
-        if (mounted) setState(() {});
-      }
-    } catch (e, st) {
-      debugPrint('HubControlScreen: set_modbus_output failed: $e\n$st');
-    }
-  }
-
-  /// Restarts a Modbus power output.
   Future<void> _restartModbusOutput(int index) async {
     final client = _hubClient;
     if (client == null || !client.isConnected) return;
@@ -271,6 +222,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
     final module =
         ModuleStore.shared.byId(widget.module.id) ?? widget.module;
     final dash = _dashboard;
+    final di = _deviceInfo;
 
     return Scaffold(
       appBar: AppBar(
@@ -287,31 +239,24 @@ class _HubControlScreenState extends State<HubControlScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.outerPadding),
           children: [
-            // Status header
             if (_offline)
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Row(children: [
-                    Container(
-                      width: 12,
-                      height: 12,
-                      child: SizedBox.shrinkWrap(
-                          child: const ColoredBox(
-                              color: Color(0xFFD32F2F))),
-                      decoration: const BoxDecoration(borderRadius: 6),
-                    ),
+                    StatusDot(
+                        status: ConnectionStatus.offline, size: 14),
                     const SizedBox(width: 8),
                     Expanded(
-                        child: Text(l10n.configModuleOffline(module.name))),
+                        child: Text(
+                            '${module.name} is offline - check connection')),
                   ]),
                 ),
               )
             else
               ModuleStatusHeader(module: module),
 
-            // Device info
-            if (_deviceInfo != null) ...[
+            if (di != null) ...[
               const SizedBox(height: 16),
               Card(
                 child: Padding(
@@ -319,27 +264,24 @@ class _HubControlScreenState extends State<HubControlScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Device Info',
+                      const Text('Device Info',
                           style: const TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 16)),
                       const SizedBox(height: 4),
-                      if (_deviceInfo!.model != null)
-                        _infoRow('Model', _deviceInfo!.model!, onSurface),
-                      if (_deviceInfo!.appFirmware != null)
-                        _infoRow(
-                            'Firmware', _deviceInfo!.appFirmware!, onSurface),
-                      if (_deviceInfo!.serial != null)
-                        _infoRow(
-                            'Serial', _deviceInfo!.serial!, onSurface),
-                      if (_deviceInfo!.mac != null)
-                        _infoRow('MAC', _deviceInfo!.mac!, onSurface),
+                      if (di!.model != null)
+                        _infoRow('Model', di!.model!, onSurface),
+                      if (di!.appFirmware != null)
+                        _infoRow('Firmware', di!.appFirmware!, onSurface),
+                      if (di!.serial != null)
+                        _infoRow('Serial', di!.serial!, onSurface),
+                      if (di!.mac != null)
+                        _infoRow('MAC', di!.mac!, onSurface),
                     ],
                   ),
                 ),
               ),
             ],
 
-            // Temperature / CPU / memory status
             if (dash != null) ...[
               const SizedBox(height: 16),
               Card(
@@ -348,7 +290,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('System Status',
+                      const Text('System Status',
                           style: const TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 16)),
                       const SizedBox(height: 4),
@@ -378,7 +320,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
               ),
             ],
 
-            // Normal outputs
             if (dash != null && dash!.outputs.isNotEmpty) ...[
               const SizedBox(height: 24),
               SectionHeader(
@@ -392,12 +333,10 @@ class _HubControlScreenState extends State<HubControlScreen> {
                     dash!.outputs[i],
                     onSurface,
                     l10n,
-                    isModbus: false,
                   ),
                 ),
             ],
 
-            // Modbus power outputs
             if (dash != null && dash!.modbusOutputs.isNotEmpty) ...[
               const SizedBox(height: 24),
               SectionHeader(
@@ -406,17 +345,15 @@ class _HubControlScreenState extends State<HubControlScreen> {
                 Padding(
                   padding:
                       const EdgeInsets.only(bottom: AppSpacing.betweenCards),
-                  child: _buildOutputRow(
+                  child: _buildModbusRow(
                     i,
                     dash!.modbusOutputs[i],
                     onSurface,
                     l10n,
-                    isModbus: true,
                   ),
                 ),
             ],
 
-            // Empty state when no outputs
             if (dash == null && !_offline) ...[
               const SizedBox(height: 24),
               Center(
@@ -430,7 +367,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
                           child: CircularProgressIndicator(
                               strokeWidth: 2.6)),
                       const SizedBox(height: 12),
-                      Text(l10n.configLoading),
+                      const Text('Loading...'),
                     ],
                   ),
                 ),
@@ -452,7 +389,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
           Expanded(
               child: Text(value,
                   textAlign: TextAlign.end,
-                  style: TextStyle(fontSize: 12))),
+                  style: const TextStyle(fontSize: 12))),
         ]),
       );
 
@@ -461,11 +398,9 @@ class _HubControlScreenState extends State<HubControlScreen> {
     HubOutputState output,
     Color onSurface,
     AppLocalizations l10n,
-    {bool isModbus = false},
   ) {
     final bool state = output.state;
     final bool turnOffDisabled = output.turnOffDisable;
-    final bool restartDisabled = output.restartDisable;
 
     return Card(
       child: Padding(
@@ -485,7 +420,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
                     children: [
                       Text(output.name.isNotEmpty
                               ? output.name
-                              : '${isModbus ? "Modbus " : ""}Output ${index + 1}',
+                              : 'Output ${index + 1}',
                           style: const TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 16)),
                       const SizedBox(height: 2),
@@ -511,25 +446,86 @@ class _HubControlScreenState extends State<HubControlScreen> {
                 ),
               ],
             ),
-            // Action buttons row
             const SizedBox(height: 8),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!isModbus) ...[
-                  OutlinedButton(
-                    onPressed: () => _pulseOutput(index),
-                    child: Text('Pulse'),
+                OutlinedButton(
+                  onPressed: () => _pulseOutput(index),
+                  child: const Text('Pulse'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModbusRow(
+    int index,
+    HubOutputState output,
+    Color onSurface,
+    AppLocalizations l10n,
+  ) {
+    final bool state = output.state;
+    final bool turnOffDisabled = output.turnOffDisable;
+    final bool restartDisabled = output.restartDisable;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                IconAvatar(
+                    icon: Icons.electrical_services,
+                    filled: state),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(output.name.isNotEmpty
+                              ? output.name
+                              : 'Modbus Output ${index + 1}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 16)),
+                      const SizedBox(height: 2),
+                      Text('Channel ${output.channel}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: onSurface.withValues(alpha: 0.5))),
+                    ],
                   ),
-                ],
-                if (isModbus) ...[
-                  OutlinedButton(
-                    onPressed: restartDisabled
-                        ? null
-                        : () => _restartModbusOutput(index),
-                    child: Text('Restart'),
-                  ),
-                ],
+                ),
+                SizedBox(
+                  width: 88,
+                  height: 48,
+                  child: state
+                      ? FilledButton(
+                          onPressed: turnOffDisabled
+                              ? null
+                              : () => _toggleOutput(index, false),
+                          child: Text(l10n.on))
+                      : OutlinedButton(
+                          onPressed: () => _toggleOutput(index, true),
+                          child: Text(l10n.off)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton(
+                  onPressed: restartDisabled
+                      ? null
+                      : () => _restartModbusOutput(index),
+                  child: const Text('Restart'),
+                ),
               ],
             ),
           ],

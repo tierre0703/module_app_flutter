@@ -25,13 +25,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
-
-import '../../core/soleux/soleux_json_protocol.dart' show SoleuxJsonActions;
 import 'module_tcp_service.dart';
-
-/// Unique incrementing request counter for this service instance.
-int _hubRequestIdCounter = 0;
 
 /// Response from a Hub command, wrapping the raw `id`, `ok`, result and error.
 class HubCommandResponse {
@@ -183,33 +177,33 @@ class HubDeviceInfo {
       );
 }
 
-/// Hub system info and log page.
-class HubSystemData {
-  final Map<String, dynamic>? identity;
-  final Map<String, dynamic>? versions;
-  final Map<String, dynamic>? runtime;
-  final List<Map<String, dynamic>> logs;
+/// Buffer-based line splitter for CR/LF-delimited TCP streams.
+class _HubLineSplitter {
+  final StringBuffer _buffer = StringBuffer();
 
-  const HubSystemData({this.identity, this.versions, this.runtime, this.logs = const []});
+  List<String> add(String chunk) {
+    _buffer.write(chunk);
+    final text = _buffer.toString();
+    final lines = <String>[];
+    var searchFrom = 0;
+    while (true) {
+      final lf = text.indexOf('\n', searchFrom);
+      if (lf < 0) break;
+      var end = lf;
+      if (end > 0 && text[end - 1] == '\r') end -= 1;
+      lines.add(text.substring(searchFrom, end));
+      searchFrom = lf + 1;
+    }
+    if (searchFrom > 0) {
+      _buffer.clear();
+      if (searchFrom < text.length) {
+        _buffer.write(text.substring(searchFrom));
+      }
+    }
+    return lines;
+  }
 
-  factory HubSystemData.fromResult(Map<String, dynamic> result) =>
-      HubSystemData(
-        identity: result['identity'] is Map
-            ? Map<String, dynamic>.from(result['identity'])
-            : null,
-        versions: result['versions'] is Map
-            ? Map<String, dynamic>.from(result['versions'])
-            : null,
-        runtime: result['runtime'] is Map
-            ? Map<String, dynamic>.from(result['runtime'])
-            : null,
-        logs: [
-          for (final l in result['logs'] is List
-              ? result['logs'] as List
-              : const [])
-            if (l is Map) Map<String, dynamic>.from(l),
-        ],
-      );
+  bool get hasPending => _buffer.isNotEmpty;
 }
 
 /// Protocol 1 socket client for the Modbus Hub JSON API (port 5008).
@@ -219,21 +213,15 @@ class HubSystemData {
 class HubJsonProtocol {
   final ModuleTcpConnection _connection;
 
-  /// Buffer for greeting detection.
   bool _greetingReceived = false;
-
-  /// In-flight request completers, keyed by request id.
   final Map<int, Completer<HubCommandResponse>> _pending = {};
-
-  /// Incrementing request id.
   int _nextId = 1;
-
-  /// Timer for the current pending request.
   Timer? _timeoutTimer;
+  final _HubLineSplitter _splitter = _HubLineSplitter();
 
   HubJsonProtocol(this._connection);
 
-  /// Connects to the Hub. The connection must be live before sending commands.
+  /// Connects to the Hub.
   Future<void> connect() => _connection.connect();
 
   /// Whether the underlying TCP session is live.
@@ -249,7 +237,6 @@ class HubJsonProtocol {
   }
 
   /// Sends a Hub command (protocol 1) and waits for the matching response.
-  /// Throws on timeout; returns the parsed [HubCommandResponse].
   Future<HubCommandResponse> sendCommand(
     String action,
     Map<String, dynamic> params, {
@@ -267,7 +254,6 @@ class HubJsonProtocol {
     });
     _connection.write('$request\r\n');
 
-    // Start a timeout timer.
     _timeoutTimer?.cancel();
     _timeoutTimer = Timer(timeout, () {
       _pending.remove(id)?.completeError(
@@ -283,15 +269,16 @@ class HubJsonProtocol {
     }
   }
 
-  /// Convenience: `hello` - identifies the Hub and lists available actions.
-  Future<HubCommandResponse> hello({Duration timeout = const Duration(seconds: 5)}) =>
-      sendCommand(SoleuxJsonActions.hello, const {}, timeout: timeout);
+  /// `hello` - identifies the Hub and lists available actions.
+  Future<HubCommandResponse> hello(
+          {Duration timeout = const Duration(seconds: 5)}) =>
+      sendCommand('hello', const {}, timeout: timeout);
 
   /// `get_device_info` - Hub identity and firmware details.
   Future<HubCommandResponse> getDeviceInfo() =>
       sendCommand('get_device_info', const {});
 
-  /// `get_dashboard` returns the Hub output control dashboard.
+  /// `get_dashboard` - outputs, modbus outputs, and system status.
   Future<HubCommandResponse> getDashboard() =>
       sendCommand('get_dashboard', const {});
 
@@ -307,7 +294,7 @@ class HubJsonProtocol {
   Future<HubCommandResponse> setModbusOutput(int channel, bool state) =>
       sendCommand('set_modbus_output', {'channel': channel, 'state': state});
 
-  /// `restart_modbus_output` - cycle one Modbus power output (off, on after 10s).
+  /// `restart_modbus_output` - cycle one Modbus power output.
   Future<HubCommandResponse> restartModbusOutput(int channel) =>
       sendCommand('restart_modbus_output', {'channel': channel});
 
@@ -358,22 +345,18 @@ class HubJsonProtocol {
       sendCommand('get_io_configuration', const {});
 
   /// Feeds raw data from the TCP socket, parsing lines and completing
-  /// pending command responses. Returns every parsed line for event handling.
+  /// pending command responses.
   List<HubCommandResponse?> feed(String chunk) {
     final lines = _splitter.add(chunk);
     final results = <HubCommandResponse?>[];
     for (final line in lines) {
       final trimmed = line.trim();
       if (trimmed.isEmpty) continue;
-      // The Hub sends a greeting "Soleux JSON API Ready" on connect before
-      // any JSON messages. Discard non-JSON greeting/framing lines.
       if (!_greetingReceived) {
         if (!trimmed.startsWith('{')) {
-          // Greeting line like "Soleux JSON API Ready" — skip it.
           _greetingReceived = true;
           continue;
         }
-        // First line is JSON; the greeting was combined or absent.
         _greetingReceived = true;
       }
       final response = _tryParse(trimmed);
@@ -382,10 +365,7 @@ class HubJsonProtocol {
     return results;
   }
 
-  final SoleuxLineSplitter _splitter = SoleuxLineSplitter();
-
-  /// Tries to parse a wire line as a JSON response. Returns null for
-  /// non-JSON lines (events, etc).
+  /// Tries to parse a wire line as a JSON response.
   HubCommandResponse? _tryParse(String line) {
     if (!line.startsWith('{')) return null;
     try {
@@ -393,7 +373,7 @@ class HubJsonProtocol {
       if (decoded is! Map) return null;
       final map = Map<String, dynamic>.from(decoded);
       final rawId = map['id'];
-      if (rawId == null) return null; // Event line, not a command response.
+      if (rawId == null) return null;
 
       final response = HubCommandResponse.fromJson(map);
       final completer = _pending.remove(response.id);
