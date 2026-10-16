@@ -19,8 +19,8 @@ import '../../services/module_status/module_status_service.dart';
 import '../../services/module_store.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common_widgets.dart';
-import 'module_tcp_service.dart';
-import 'hub_api_protocol.dart' show HubJsonProtocol, HubDashboardData, HubDeviceInfo, HubOutputState, HubCommandResponse;
+import '../../services/module_status/module_tcp_service.dart';
+import '../../services/module_status/hub_api_protocol.dart' show HubJsonProtocol, HubDashboardData, HubDeviceInfo, HubOutputState, HubCommandResponse;
 
 class HubControlScreen extends StatefulWidget {
   const HubControlScreen({super.key, required this.module});

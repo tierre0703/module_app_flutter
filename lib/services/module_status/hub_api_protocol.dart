@@ -27,7 +27,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
-import '../../core/soleux/soleux_json_protocol.dart' show SoleuxJsonActions, SoleuxLineSplitter;
+import '../../core/soleux/soleux_json_protocol.dart' show SoleuxJsonActions;
 import 'module_tcp_service.dart';
 
 /// Unique incrementing request counter for this service instance.
