@@ -471,49 +471,61 @@ class _HubOutputRow extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconAvatar(
-                icon: Icons.electrical_services,
-                filled: state),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(output.name.isNotEmpty
-                          ? output.name
-                          : 'Output ${index + 1}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16)),
-                  const SizedBox(height: 2),
-                  Text('Channel ${output.channel}',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: onSurface.withValues(alpha: 0.5))),
-                ],
-              ),
+            Row(
+              children: [
+                IconAvatar(
+                    icon: Icons.electrical_services,
+                    filled: state),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(output.name.isNotEmpty
+                              ? output.name
+                              : 'Output ${index + 1}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 16)),
+                      const SizedBox(height: 2),
+                      Text('Channel ${output.channel}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: onSurface.withValues(alpha: 0.5))),
+                    ],
+                  ),
+                ),
+                IconButton(
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: onEdit),
+              ],
             ),
-            SizedBox(
-              width: 88,
-              height: 48,
-              child: state
-                  ? FilledButton(
-                      onPressed: turnOffDisabled
-                          ? null
-                          : onToggle,
-                      child: Text(l10n.on))
-                  : OutlinedButton(
-                      onPressed: onToggle,
-                      child: Text(l10n.off)),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 88,
+                  height: 48,
+                  child: state
+                      ? FilledButton(
+                          onPressed: turnOffDisabled
+                              ? null
+                              : onToggle,
+                          child: Text(l10n.on))
+                      : OutlinedButton(
+                          onPressed: onToggle,
+                          child: Text(l10n.off)),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: onPulse,
+                  child: const Text('Pulse'),
+                ),
+              ],
             ),
-            OutlinedButton(
-              onPressed: onPulse,
-              child: const Text('Pulse'),
-            ),
-            IconButton(
-                icon: const Icon(Icons.edit_outlined),
-                onPressed: onEdit),
           ],
         ),
       ),
@@ -550,51 +562,63 @@ class _HubModbusOutputRow extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            IconAvatar(
-                icon: Icons.electrical_services,
-                filled: state),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(output.name.isNotEmpty
-                          ? output.name
-                          : 'Modbus Output ${index + 1}',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16)),
-                  const SizedBox(height: 2),
-                  Text('Channel ${output.channel}',
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: onSurface.withValues(alpha: 0.5))),
-                ],
-              ),
+            Row(
+              children: [
+                IconAvatar(
+                    icon: Icons.electrical_services,
+                    filled: state),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(output.name.isNotEmpty
+                              ? output.name
+                              : 'Modbus Output ${index + 1}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 16)),
+                      const SizedBox(height: 2),
+                      Text('Channel ${output.channel}',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: onSurface.withValues(alpha: 0.5))),
+                    ],
+                  ),
+                ),
+                IconButton(
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: onEdit),
+              ],
             ),
-            SizedBox(
-              width: 88,
-              height: 48,
-              child: state
-                  ? FilledButton(
-                      onPressed: turnOffDisabled
-                          ? null
-                          : onToggle,
-                      child: Text(l10n.on))
-                  : OutlinedButton(
-                      onPressed: onToggle,
-                      child: Text(l10n.off)),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 88,
+                  height: 48,
+                  child: state
+                      ? FilledButton(
+                          onPressed: turnOffDisabled
+                              ? null
+                              : onToggle,
+                          child: Text(l10n.on))
+                      : OutlinedButton(
+                          onPressed: onToggle,
+                          child: Text(l10n.off)),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton(
+                  onPressed: restartDisabled
+                      ? null
+                      : onRestart,
+                  child: const Text('Restart'),
+                ),
+              ],
             ),
-            OutlinedButton(
-              onPressed: restartDisabled
-                  ? null
-                  : onRestart,
-              child: const Text('Restart'),
-            ),
-            IconButton(
-                icon: const Icon(Icons.edit_outlined),
-                onPressed: onEdit),
           ],
         ),
       ),
