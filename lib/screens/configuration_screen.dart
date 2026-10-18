@@ -126,7 +126,12 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
               return const Center(child: Text('No modules added yet'));
             }
             return ListView.separated(
-              padding: const EdgeInsets.all(AppSpacing.outerPadding),
+              padding: EdgeInsets.only(
+                left: AppSpacing.outerPadding,
+                right: AppSpacing.outerPadding,
+                top: AppSpacing.outerPadding,
+                bottom: AppSpacing.outerPadding + 80.0,
+              ),
               itemCount: modules.length,
               separatorBuilder: (_, __) =>
                   const SizedBox(height: AppSpacing.betweenCards),
