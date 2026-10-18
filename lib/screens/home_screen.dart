@@ -393,14 +393,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                   );
                                   await ScenarioStore.shared.commit();
                                 },
-                                onEdit: () async {
-                                  await Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => ScenarioEditorScreen(
-                                          scenario: _homeScenarios[i]),
-                                    ),
-                                  );
-                                  await ScenarioStore.shared.commit();
+                                onEdit: () {
+                                  // Scenario card tapping no longer opens edit screen.
                                 },
                               ),
                             ),
@@ -428,7 +422,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               bottom: AppSpacing.betweenCards),
                           child: _TemperatureRow(
                               module: module,
-                              onTap: () => openModuleDetail(context, module)),
+                              onTap: () {}),
                         ),
                   ],
                 ),
