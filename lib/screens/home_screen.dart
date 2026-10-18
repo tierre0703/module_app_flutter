@@ -151,9 +151,14 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     final result = await ScenarioRunner.shared.run(scenario);
     await EventLogStore.shared.recordScenarioResult(result);
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result.failed == 0
+            ? '${scenario.name} completed'
+            : '${scenario.name}: ${result.failed} action(s) failed')));
   }
 
-  void _showRoomScenarios(Room room) {
+  Future<void> _showRoomScenarios(Room room) async {
     final scenarios =
         _allScenarios.where((s) => s.roomName == room.name).toList();
     final cs = Theme.of(context).colorScheme;

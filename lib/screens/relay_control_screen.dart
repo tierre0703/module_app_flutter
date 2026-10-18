@@ -103,6 +103,7 @@ class _RelayControlScreenState extends State<RelayControlScreen> {
       outputName: module.channels[index].name,
       on: next,
     );
+    final l10n = AppLocalizations.of(context);
     final service = ModuleStatusService.shared;
     try {
       final ok = next
@@ -111,11 +112,22 @@ class _RelayControlScreenState extends State<RelayControlScreen> {
       if (!ok) {
         // No live unit for this module - fall back to a local toggle.
         setState(() => module.channels[index].isOn = next);
+        _showToast(context, '${module.channels[index].name}: command failed');
+      } else {
+        _showToast(context, next
+            ? '${module.channels[index].name} turned ON'
+            : '${module.channels[index].name} turned OFF');
       }
     } catch (e, st) {
       debugPrint('RelayControlScreen: toggle output failed: $e\n$st');
-      // Command failed or module offline - keep the UI showing reality.
+      _showToast(context, '${module.channels[index].name}: command failed');
     }
+  }
+
+  void _showToast(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _refresh() async {

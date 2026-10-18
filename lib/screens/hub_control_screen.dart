@@ -201,21 +201,26 @@ class _HubControlScreenState extends State<HubControlScreen> {
     if (client == null || !client.isConnected) return;
     final channel = index + 1;
     final dash = _dashboard;
+    final name = dash != null && index < dash.outputs.length
+        ? dash.outputs[index].name
+        : 'Output $channel';
     EventLogStore.shared.recordModuleAction(
       moduleName: widget.module.name,
-      outputName: dash != null && index < dash.outputs.length
-          ? dash.outputs[index].name
-          : 'Output $channel',
+      outputName: name,
       on: next,
     );
     try {
       final response = await client.setOutput(channel, next);
       if (response.ok) {
+        _showToast('$name turned ${next ? "ON" : "OFF"}');
         await _fetchDashboard();
         if (mounted) setState(() {});
+      } else {
+        _showToast('$name: command failed');
       }
     } catch (e, st) {
       debugPrint('HubControlScreen: set_output failed: $e\n$st');
+      _showToast('$name: command failed');
     }
   }
 
@@ -223,13 +228,19 @@ class _HubControlScreenState extends State<HubControlScreen> {
     final client = _hubClient;
     if (client == null || !client.isConnected) return;
     final channel = index + 1;
+    final dash = _dashboard;
+    final name = dash != null && index < dash.outputs.length
+        ? dash.outputs[index].name
+        : 'Output $channel';
     try {
       await client.pulseOutput(channel);
+      _showToast('$name: pulse sent');
       await Future.delayed(const Duration(seconds: 1500));
       await _fetchDashboard();
       if (mounted) setState(() {});
     } catch (e, st) {
       debugPrint('HubControlScreen: pulse_output failed: $e\n$st');
+      _showToast('$name: pulse failed');
     }
   }
 
@@ -237,14 +248,22 @@ class _HubControlScreenState extends State<HubControlScreen> {
     final client = _hubClient;
     if (client == null || !client.isConnected) return;
     final channel = index + 1;
+    final dash = _dashboard;
+    final name = dash != null && index < dash.modbusOutputs.length
+        ? dash.modbusOutputs[index].name
+        : 'Modbus Output $channel';
     try {
       final response = await client.setModbusOutput(channel, next);
       if (response.ok) {
+        _showToast('$name turned ${next ? "ON" : "OFF"}');
         await _fetchDashboard();
         if (mounted) setState(() {});
+      } else {
+        _showToast('$name: command failed');
       }
     } catch (e, st) {
       debugPrint('HubControlScreen: set_modbus_output failed: $e\n$st');
+      _showToast('$name: command failed');
     }
   }
 
@@ -252,14 +271,27 @@ class _HubControlScreenState extends State<HubControlScreen> {
     final client = _hubClient;
     if (client == null || !client.isConnected) return;
     final channel = index + 1;
+    final dash = _dashboard;
+    final name = dash != null && index < dash.modbusOutputs.length
+        ? dash.modbusOutputs[index].name
+        : 'Modbus Output $channel';
     try {
       await client.restartModbusOutput(channel);
+      _showToast('$name: restart sent');
       await Future.delayed(const Duration(seconds: 2000));
       await _fetchDashboard();
       if (mounted) setState(() {});
     } catch (e, st) {
       debugPrint('HubControlScreen: restart_modbus_output failed: $e\n$st');
+      _showToast('$name: restart failed');
     }
+  }
+
+  void _showToast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -471,61 +503,56 @@ class _HubOutputRow extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                IconAvatar(
-                    icon: Icons.electrical_services,
-                    filled: state),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            IconAvatar(
+                icon: Icons.electrical_services,
+                filled: state),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(output.name.isNotEmpty
+                          ? output.name
+                          : 'Output ${index + 1}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  const SizedBox(height: 2),
+                  Text('Channel ${output.channel}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: onSurface.withValues(alpha: 0.5))),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(output.name.isNotEmpty
-                              ? output.name
-                              : 'Output ${index + 1}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 16)),
-                      const SizedBox(height: 2),
-                      Text('Channel ${output.channel}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: onSurface.withValues(alpha: 0.5))),
+                      SizedBox(
+                        width: 88,
+                        height: 48,
+                        child: state
+                            ? FilledButton(
+                                onPressed: turnOffDisabled
+                                    ? null
+                                    : onToggle,
+                                child: Text(l10n.on))
+                            : OutlinedButton(
+                                onPressed: onToggle,
+                                child: Text(l10n.off)),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: onPulse,
+                        child: const Text('Pulse'),
+                      ),
                     ],
                   ),
-                ),
-                IconButton(
-                    icon: const Icon(Icons.edit_outlined),
-                    onPressed: onEdit),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 88,
-                  height: 48,
-                  child: state
-                      ? FilledButton(
-                          onPressed: turnOffDisabled
-                              ? null
-                              : onToggle,
-                          child: Text(l10n.on))
-                      : OutlinedButton(
-                          onPressed: onToggle,
-                          child: Text(l10n.off)),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: onPulse,
-                  child: const Text('Pulse'),
-                ),
-              ],
-            ),
+            IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: onEdit),
           ],
         ),
       ),
@@ -562,63 +589,58 @@ class _HubModbusOutputRow extends StatelessWidget {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                IconAvatar(
-                    icon: Icons.electrical_services,
-                    filled: state),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            IconAvatar(
+                icon: Icons.electrical_services,
+                filled: state),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(output.name.isNotEmpty
+                          ? output.name
+                          : 'Modbus Output ${index + 1}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  const SizedBox(height: 2),
+                  Text('Channel ${output.channel}',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: onSurface.withValues(alpha: 0.5))),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(output.name.isNotEmpty
-                              ? output.name
-                              : 'Modbus Output ${index + 1}',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 16)),
-                      const SizedBox(height: 2),
-                      Text('Channel ${output.channel}',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: onSurface.withValues(alpha: 0.5))),
+                      SizedBox(
+                        width: 88,
+                        height: 48,
+                        child: state
+                            ? FilledButton(
+                                onPressed: turnOffDisabled
+                                    ? null
+                                    : onToggle,
+                                child: Text(l10n.on))
+                            : OutlinedButton(
+                                onPressed: onToggle,
+                                child: Text(l10n.off)),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: restartDisabled
+                            ? null
+                            : onRestart,
+                        child: const Text('Restart'),
+                      ),
                     ],
                   ),
-                ),
-                IconButton(
-                    icon: const Icon(Icons.edit_outlined),
-                    onPressed: onEdit),
-              ],
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                SizedBox(
-                  width: 88,
-                  height: 48,
-                  child: state
-                      ? FilledButton(
-                          onPressed: turnOffDisabled
-                              ? null
-                              : onToggle,
-                          child: Text(l10n.on))
-                      : OutlinedButton(
-                          onPressed: onToggle,
-                          child: Text(l10n.off)),
-                ),
-                const SizedBox(width: 8),
-                OutlinedButton(
-                  onPressed: restartDisabled
-                      ? null
-                      : onRestart,
-                  child: const Text('Restart'),
-                ),
-              ],
-            ),
+            IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: onEdit),
           ],
         ),
       ),

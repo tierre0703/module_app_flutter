@@ -32,6 +32,11 @@ class ScenariosScreen extends StatelessWidget {
             AppLocalizations.of(context).homeRunningScenario(scenario.name))));
     final result = await ScenarioRunner.shared.run(scenario);
     await EventLogStore.shared.recordScenarioResult(result);
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(result.failed == 0
+            ? '${scenario.name} completed'
+            : '${scenario.name}: ${result.failed} action(s) failed')));
   }
 
   Future<void> _createScenario(BuildContext context) async {
