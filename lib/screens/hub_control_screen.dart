@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
+import '../core/soleux/soleux_device_event.dart';
 import '../models/models.dart';
 import '../services/event_log_store.dart';
 import '../services/module_status/hub_api_protocol.dart';
@@ -35,6 +36,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
   bool _busy = false;
   bool _offline = false;
   bool _editDialogOpen = false;
+  StreamSubscription<SoleuxDeviceEvent>? _eventSubscription;
 
   @override
   void initState() {
@@ -44,9 +46,64 @@ class _HubControlScreenState extends State<HubControlScreen> {
 
   @override
   void dispose() {
+    _eventSubscription?.cancel();
+    _eventSubscription = null;
     _hubClient?.dispose();
     _hubClient = null;
     super.dispose();
+  }
+
+  /// Applies an async Hub device event to the live dashboard data, then syncs
+  /// to the shared store so all screens reflect the change in real-time.
+  ///
+  /// Handles `output_state_changed`, `input_state_changed`, and `system_status`
+  /// broadcasts pushed by the Hub (doc/Modbus_Hub_Control_API.md §"Asynchronous
+  /// TCP events").
+  void _onHubEvent(SoleuxDeviceEvent event) {
+    final dash = _dashboard;
+    if (dash == null) return;
+
+    var changed = false;
+    switch (event.type) {
+      case SoleuxDeviceEventType.outputStateChanged: {
+        // Hub async events use zero-based bank channels per spec §"Channel
+        // and state rules". Map onto the dashboard's normal-output list.
+        final channel = event.channel;
+        final state = event.state;
+        if (channel != null && state != null &&
+            channel >= 0 && channel < dash.outputs.length) {
+          dash.outputs[channel].state = state;
+          changed = true;
+        }
+        break;
+      }
+      case SoleuxDeviceEventType.systemStatus: {
+        // Periodic ~5-second system snapshot with CPU temp, internal temp,
+        // memory/CPU usage, and LAN IP.
+        final system = event.system;
+        if (system != null) {
+          final cpuTemp = system['cpu_temp_c'];
+          if (cpuTemp is num) {
+            dash.cpuTemp = cpuTemp.toDouble();
+          }
+          final internalTemp = system['internal_temp_c'];
+          if (internalTemp is num) {
+            dash.internalTemp = internalTemp.toDouble();
+          }
+          changed = true;
+        }
+        break;
+      }
+      default:
+        // input_state_changed and other events are logged but do not affect
+        // the dashboard output display (inputs are not rendered here).
+        break;
+    }
+
+    if (changed) {
+      _syncToStore();
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _connectAndRefresh() async {
@@ -62,13 +119,12 @@ class _HubControlScreenState extends State<HubControlScreen> {
     _hubClient = HubJsonProtocol(connection);
 
     connection.dataStream.listen((chunk) {
-      final responses = _hubClient!.feed(chunk);
-      for (final response in responses) {
-        if (response != null) {
-          _handleResponse(response);
-        }
-      }
+      _hubClient!.feed(chunk);
     });
+
+    // Subscribe to Hub async device events for real-time state updates.
+    _eventSubscription?.cancel();
+    _eventSubscription = _hubClient!.deviceEventStream.listen(_onHubEvent);
 
     try {
       await connection.connect();
@@ -146,10 +202,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
       }
       if (dash.cpuTemp != null) m.internalTempC = dash.cpuTemp!;
     });
-  }
-
-  void _handleResponse(HubCommandResponse response) {
-    // Completers resolved in HubJsonProtocol.feed
   }
 
   Future<void> _refresh() async {

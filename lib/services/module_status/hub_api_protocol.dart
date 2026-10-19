@@ -20,11 +20,20 @@
 //   - backup/transfer: settings_backup_download_begin, transfer_download_chunk,
 //     transfer_download_finish, transfer_upload_begin, transfer_upload_chunk,
 //     transfer_upload_finish, transfer_commit
+//
+// Change history:
+//   2026-10-18: Added deviceEventStream for async Hub broadcasts
+//               (protocol-2 events with id:null + event field). The feed()
+//               method now detects these and publishes them as
+//               SoleuxDeviceEvent objects instead of dropping them.
 library;
 
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
+import '../../core/soleux/soleux_device_event.dart';
 import 'module_tcp_service.dart';
 
 /// Response from a Hub command, wrapping the raw `id`, `ok`, result and error.
@@ -60,8 +69,8 @@ class HubDashboardData {
   final int modbusPowerOutputCount;
   final String? date;
   final String? time;
-  final double? internalTemp;
-  final double? cpuTemp;
+  double? internalTemp;
+  double? cpuTemp;
   final double? memoryUsage;
   final double? cpuUsage;
   final List<HubOutputState> outputs;
@@ -118,7 +127,7 @@ class HubOutputState {
   final int id;
   final int channel;
   final String name;
-  final bool state;
+  bool state;
   final bool turnOffDisable;
   final bool restartDisable;
 
@@ -206,6 +215,18 @@ class _HubLineSplitter {
   bool get hasPending => _buffer.isNotEmpty;
 }
 
+/// Parse outcome for one wire line: a command response, an async event, or
+/// an unparseable/skip line.
+enum _ParseOutcome { command, event, skip }
+
+/// Tagged result from [_tryParseLine].
+class _ParseResult {
+  final _ParseOutcome outcome;
+  final HubCommandResponse? command;
+
+  _ParseResult(this.outcome, [this.command]);
+}
+
 /// Protocol 1 socket client for the Modbus Hub JSON API (port 5008).
 ///
 /// Handles the Hub-specific greeting (`Soleux JSON API Ready`), sends
@@ -218,6 +239,19 @@ class HubJsonProtocol {
   int _nextId = 1;
   Timer? _timeoutTimer;
   final _HubLineSplitter _splitter = _HubLineSplitter();
+
+  /// Broadcast stream for Hub asynchronous events (protocol-2 broadcasts with
+  /// `id:null` and an `event` field, e.g. `output_state_changed`,
+  /// `input_state_changed`, `system_status`). Listeners receive parsed
+  /// [SoleuxDeviceEvent] objects whose [SoleuxDeviceEvent.data] contains the
+  /// Hub-specific payload fields (`channel`, `state`, `hardware_pin`,
+  /// `output_type`, `confirmed`, `revision`, etc.).
+  final StreamController<SoleuxDeviceEvent> _eventController =
+      StreamController<SoleuxDeviceEvent>.broadcast(sync: true);
+
+  /// Stream of Hub asynchronous device events. Subscribe to receive live
+  /// state pushes without polling `get_dashboard`.
+  Stream<SoleuxDeviceEvent> get deviceEventStream => _eventController.stream;
 
   HubJsonProtocol(this._connection);
 
@@ -233,6 +267,7 @@ class HubJsonProtocol {
   /// Disposes of the connection.
   void dispose() {
     _timeoutTimer?.cancel();
+    _eventController.close();
     _connection.dispose();
   }
 
@@ -345,7 +380,12 @@ class HubJsonProtocol {
       sendCommand('get_io_configuration', const {});
 
   /// Feeds raw data from the TCP socket, parsing lines and completing
-  /// pending command responses.
+  /// pending command responses. Asynchronous Hub events (`id:null` with an
+  /// `event` field) are published on [deviceEventStream] instead.
+  ///
+  /// Returns the list of recognised command responses (non-null entries) for
+  /// callers that need synchronous access; event-only lines produce a null
+  /// entry.
   List<HubCommandResponse?> feed(String chunk) {
     final lines = _splitter.add(chunk);
     final results = <HubCommandResponse?>[];
@@ -359,30 +399,45 @@ class HubJsonProtocol {
         }
         _greetingReceived = true;
       }
-      final response = _tryParse(trimmed);
-      results.add(response);
+      final parsed = _tryParseLine(trimmed);
+      if (parsed.outcome == _ParseOutcome.command) {
+        results.add(parsed.command);
+      }
+      // Events are broadcast via _eventController in _tryParseLine; no entry
+      // added to results (null keeps the list the same length as lines).
     }
     return results;
   }
 
-  /// Tries to parse a wire line as a JSON response.
-  HubCommandResponse? _tryParse(String line) {
-    if (!line.startsWith('{')) return null;
+  /// Tries to parse one wire line as a command response or an async event.
+  _ParseResult _tryParseLine(String line) {
+    if (!line.startsWith('{')) return _ParseResult(_ParseOutcome.skip);
     try {
       final decoded = jsonDecode(line);
-      if (decoded is! Map) return null;
+      if (decoded is! Map) return _ParseResult(_ParseOutcome.skip);
       final map = Map<String, dynamic>.from(decoded);
       final rawId = map['id'];
-      if (rawId == null) return null;
+      final rawEvent = map['event'];
 
+      // Async event: id:null with an event field --> broadcast and skip.
+      if (rawId == null && rawEvent is String) {
+        final event = SoleuxDeviceEvent.parseEnvelope(map);
+        _eventController.add(event);
+        return _ParseResult(_ParseOutcome.event);
+      }
+
+      // Missing or non-numeric id --> not a command response we can handle.
+      if (rawId == null) return _ParseResult(_ParseOutcome.skip);
+
+      // Command response: match by id to pending completer.
       final response = HubCommandResponse.fromJson(map);
       final completer = _pending.remove(response.id);
       if (completer != null && !completer.isCompleted) {
         completer.complete(response);
       }
-      return response;
+      return _ParseResult(_ParseOutcome.command, response);
     } catch (e) {
-      return null;
+      return _ParseResult(_ParseOutcome.skip);
     }
   }
 }
