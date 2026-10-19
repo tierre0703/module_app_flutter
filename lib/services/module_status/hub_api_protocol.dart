@@ -31,6 +31,7 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
+import '../../core/logger/app_logger.dart';
 import '../../core/soleux/soleux_device_event.dart';
 import 'module_tcp_service.dart';
 
@@ -420,6 +421,12 @@ class HubJsonProtocol {
       // Async event: id:null with an event field --> broadcast and skip.
       if (rawId == null && rawEvent is String) {
         final event = SoleuxDeviceEvent.parseEnvelope(map);
+        AppLogger.event('hub_broadcast', {
+          'transport': 'tcp',
+          'endpoint': _connection.key,
+          'event': rawEvent,
+          'module': _connection.host,
+        });
         _eventController.add(event);
         return _ParseResult(_ParseOutcome.event);
       }

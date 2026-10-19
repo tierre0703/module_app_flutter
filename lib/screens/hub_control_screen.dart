@@ -9,6 +9,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
+import '../core/logger/app_logger.dart';
 import '../core/soleux/soleux_device_event.dart';
 import '../models/models.dart';
 import '../services/event_log_store.dart';
@@ -61,6 +62,11 @@ class _HubControlScreenState extends State<HubControlScreen> {
   void _onHubEvent(SoleuxDeviceEvent event) {
     final dash = _dashboard;
     if (dash == null) return;
+
+    // Log every incoming Hub broadcast event for monitoring/diagnostics.
+    AppLogger.log(
+        'Hub broadcast: ${event.rawEvent}',
+        tag: 'hub_control_screen');
 
     var changed = false;
     switch (event.type) {
