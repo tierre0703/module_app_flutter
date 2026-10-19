@@ -33,7 +33,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
   HubJsonProtocol? _hubClient;
   HubDashboardData? _dashboard;
   HubDeviceInfo? _deviceInfo;
-  bool _busy = false;
   bool _offline = false;
   bool _editDialogOpen = false;
   StreamSubscription<SoleuxDeviceEvent>? _eventSubscription;
@@ -206,7 +205,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
 
   Future<void> _refresh() async {
     if (!mounted) return;
-    _busy = true;
     setState(() {});
     try {
       if (_hubClient == null || !_hubClient!.isConnected) {
@@ -215,7 +213,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
         await _fetchDashboard();
       }
     } finally {
-      _busy = false;
       if (mounted) setState(() {});
     }
   }
@@ -387,19 +384,19 @@ class _HubControlScreenState extends State<HubControlScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Device Info',
-                          style: const TextStyle(
+                      Text('Device Info',
+                          style: TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 16)),
                       const SizedBox(height: 4),
-                      if (di!.model != null)
-                        _infoRow('Model', di!.model!, onSurface),
-                      if (di!.appFirmware != null)
+                      if (di.model != null)
+                        _infoRow('Model', di.model!, onSurface),
+                      if (di.appFirmware != null)
                         _infoRow(
-                            'Firmware', di!.appFirmware!, onSurface),
-                      if (di!.serial != null)
-                        _infoRow('Serial', di!.serial!, onSurface),
-                      if (di!.mac != null)
-                        _infoRow('MAC', di!.mac!, onSurface),
+                            'Firmware', di.appFirmware!, onSurface),
+                      if (di.serial != null)
+                        _infoRow('Serial', di.serial!, onSurface),
+                      if (di.mac != null)
+                        _infoRow('MAC', di.mac!, onSurface),
                     ],
                   ),
                 ),
@@ -414,29 +411,29 @@ class _HubControlScreenState extends State<HubControlScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('System Status',
-                          style: const TextStyle(
+                      Text('System Status',
+                          style: TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 16)),
                       const SizedBox(height: 4),
-                      if (dash!.internalTemp != null)
+                      if (dash.internalTemp != null)
                         _infoRow(
                             'Internal Temp',
-                            '${dash!.internalTemp!.toStringAsFixed(1)} °C',
+                            '${dash.internalTemp!.toStringAsFixed(1)} °C',
                             onSurface),
-                      if (dash!.cpuTemp != null)
+                      if (dash.cpuTemp != null)
                         _infoRow(
                             'CPU Temp',
-                            '${dash!.cpuTemp!.toStringAsFixed(1)} °C',
+                            '${dash.cpuTemp!.toStringAsFixed(1)} °C',
                             onSurface),
-                      if (dash!.cpuUsage != null)
+                      if (dash.cpuUsage != null)
                         _infoRow(
                             'CPU Usage',
-                            '${dash!.cpuUsage!.toStringAsFixed(1)}%',
+                            '${dash.cpuUsage!.toStringAsFixed(1)}%',
                             onSurface),
-                      if (dash!.memoryUsage != null)
+                      if (dash.memoryUsage != null)
                         _infoRow(
                             'Memory',
-                            '${dash!.memoryUsage!.toStringAsFixed(1)}%',
+                            '${dash.memoryUsage!.toStringAsFixed(1)}%',
                             onSurface),
                     ],
                   ),
@@ -444,19 +441,19 @@ class _HubControlScreenState extends State<HubControlScreen> {
               ),
             ],
 
-            if (dash != null && dash!.outputs.isNotEmpty) ...[
+            if (dash != null && dash.outputs.isNotEmpty) ...[
               const SizedBox(height: 24),
               SectionHeader(
-                  'Outputs (${dash!.outputs.length})'),
-              for (int i = 0; i < dash!.outputs.length; i++)
+                  'Outputs (${dash.outputs.length})'),
+              for (int i = 0; i < dash.outputs.length; i++)
                 Padding(
                   padding:
                       const EdgeInsets.only(bottom: AppSpacing.betweenCards),
                   child: _HubOutputRow(
                     index: i,
-                    output: dash!.outputs[i],
+                    output: dash.outputs[i],
                     onToggle: () => _toggleOutput(
-                        i, !dash!.outputs[i].state),
+                        i, !dash.outputs[i].state),
                     onPulse: () => _pulseOutput(i),
                     onEdit: () => _editChannel(i),
                     l10n: l10n,
@@ -465,19 +462,19 @@ class _HubControlScreenState extends State<HubControlScreen> {
                 ),
             ],
 
-            if (dash != null && dash!.modbusOutputs.isNotEmpty) ...[
+            if (dash != null && dash.modbusOutputs.isNotEmpty) ...[
               const SizedBox(height: 24),
               SectionHeader(
-                  'Modbus Power Outputs (${dash!.modbusOutputs.length})'),
-              for (int i = 0; i < dash!.modbusOutputs.length; i++)
+                  'Modbus Power Outputs (${dash.modbusOutputs.length})'),
+              for (int i = 0; i < dash.modbusOutputs.length; i++)
                 Padding(
                   padding:
                       const EdgeInsets.only(bottom: AppSpacing.betweenCards),
                   child: _HubModbusOutputRow(
                     index: i,
-                    output: dash!.modbusOutputs[i],
+                    output: dash.modbusOutputs[i],
                     onToggle: () => _toggleModbusOutput(
-                        i, !dash!.modbusOutputs[i].state),
+                        i, !dash.modbusOutputs[i].state),
                     onRestart: () => _restartModbusOutput(i),
                     onEdit: () => _editChannel(i),
                     l10n: l10n,
@@ -490,7 +487,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
               const SizedBox(height: 24),
               Center(
                 child: Padding(
-                  padding: const EdgeInsets.all(24),
+                  padding: EdgeInsets.all(24),
                   child: Column(
                     children: [
                       SizedBox(
@@ -499,7 +496,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
                           child: CircularProgressIndicator(
                               strokeWidth: 2.6)),
                       const SizedBox(height: 12),
-                      const Text('Loading...'),
+                      Text('Loading...'),
                     ],
                   ),
                 ),

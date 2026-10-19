@@ -31,8 +31,6 @@ library;
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
-
 import '../../core/soleux/soleux_device_event.dart';
 import 'module_tcp_service.dart';
 
@@ -76,7 +74,7 @@ class HubDashboardData {
   final List<HubOutputState> outputs;
   final List<HubOutputState> modbusOutputs;
 
-  const HubDashboardData({
+  HubDashboardData({
     required this.outputCount,
     required this.modbusPowerOutputCount,
     this.date,
@@ -131,7 +129,7 @@ class HubOutputState {
   final bool turnOffDisable;
   final bool restartDisable;
 
-  const HubOutputState({
+  HubOutputState({
     required this.id,
     required this.channel,
     this.name = '',
