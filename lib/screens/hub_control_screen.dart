@@ -59,6 +59,11 @@ class _HubControlScreenState extends State<HubControlScreen> {
   /// Handles `output_state_changed`, `input_state_changed`, and `system_status`
   /// broadcasts pushed by the Hub (doc/Modbus_Hub_Control_API.md §"Asynchronous
   /// TCP events").
+  ///
+  /// The Hub broadcast includes an `output_type` field in the payload:
+  ///   `"modbus_power"` — targets the modbus power output list
+  ///   `"local"` — targets the normal output list
+  ///   absent — treated as a normal output (backward compatibility)
   void _onHubEvent(SoleuxDeviceEvent event) {
     final dash = _dashboard;
     if (dash == null) return;
@@ -72,13 +77,24 @@ class _HubControlScreenState extends State<HubControlScreen> {
     switch (event.type) {
       case SoleuxDeviceEventType.outputStateChanged: {
         // Hub async events use zero-based bank channels per spec §"Channel
-        // and state rules". Map onto the dashboard's normal-output list.
+        // and state rules". The `output_type` field distinguishes modbus
+        // power outputs from regular local outputs.
         final channel = event.channel;
         final state = event.state;
-        if (channel != null && state != null &&
-            channel >= 0 && channel < dash.outputs.length) {
-          dash.outputs[channel].state = state;
-          changed = true;
+        if (channel == null || state == null) break;
+
+        final outputType = event.data['output_type'] as String?;
+        if (outputType == 'modbus_power') {
+          if (channel >= 0 && channel < dash.modbusOutputs.length) {
+            dash.modbusOutputs[channel].state = state;
+            changed = true;
+          }
+        } else {
+          // "local" or absent — treat as a normal output.
+          if (channel >= 0 && channel < dash.outputs.length) {
+            dash.outputs[channel].state = state;
+            changed = true;
+          }
         }
         break;
       }
