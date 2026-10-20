@@ -123,6 +123,7 @@ class _BlindControlScreenState extends State<BlindControlScreen> {
                 // Action buttons row.
                 Row(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     IconButton(
                         icon: const Icon(Icons.refresh),

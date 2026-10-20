@@ -72,6 +72,7 @@ class _TemperatureModuleScreenState extends State<TemperatureModuleScreen> {
             // Action buttons row.
             Row(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 IconButton(
                     icon: const Icon(Icons.edit_outlined),

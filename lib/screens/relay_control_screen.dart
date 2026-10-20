@@ -159,9 +159,10 @@ class _RelayControlScreenState extends State<RelayControlScreen> {
             child: ListView(
               padding: const EdgeInsets.all(AppSpacing.outerPadding),
               children: [
-                // Action buttons row.
+                // Action buttons row, right-aligned.
                 Row(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     IconButton(
                         icon: const Icon(Icons.refresh),

@@ -118,6 +118,7 @@ class _DimmerDcScreenState extends State<DimmerDcScreen> {
                 // Action buttons row.
                 Row(
                   mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     IconButton(
                         icon: const Icon(Icons.refresh),

@@ -386,6 +386,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
             // Action buttons row.
             Row(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 IconButton(
                     icon: const Icon(Icons.refresh),
