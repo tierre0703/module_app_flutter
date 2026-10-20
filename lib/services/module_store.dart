@@ -129,6 +129,7 @@ class ModuleStore extends ChangeNotifier {
                   icon: priorChannels[i].icon,
                   isOn: fresh.channels[i].isOn,
                   brightness: fresh.channels[i].brightness,
+                  isModbusPower: priorChannels[i].isModbusPower,
                 )
               : fresh.channels[i],
       ]);

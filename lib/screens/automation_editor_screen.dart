@@ -211,11 +211,12 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
       return;
     }
     if (m.type == ModuleType.hub) {
-      _watchIsHubModbus = false;
       _watchInputIndex = -1;
       _deviceInputName = '';
-      _watchChannelIndex =
-          _outputIndices.isNotEmpty ? _outputIndices.first : -1;
+      // Start with regular outputs; user can switch to Modbus via the bank
+      // selector.
+      final indices = _outputIndices;
+      _watchChannelIndex = indices.isNotEmpty ? indices.first : -1;
       _deviceChannelName = _channelNameAt(m, _watchChannelIndex);
     } else if (_deviceIsInput) {
       _watchInputIndex = _inputIndices.isNotEmpty ? _inputIndices.first : -1;
@@ -471,7 +472,7 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                 Text(_deviceIsInput
                     ? l10n.actionPickerNoInputs
                     : l10n.actionPickerNoOutputs)
-              else if (_hasWatchTarget)
+              else if (_selectedModule?.type != ModuleType.hub && _hasWatchTarget)
                 DropdownButtonFormField<int>(
                   // Watched output wired by index; the label is resolved
                   // live so a rename does not orphan the trigger.
@@ -515,7 +516,7 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                       _deviceTurnsOn = v != 'off';
                     }),
                   ),
-                ] else ...[
+                ] else if (!_deviceIsInput) ...[
                   SegmentedButton<bool>(
                     segments: [
                       ButtonSegment(
