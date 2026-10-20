@@ -69,7 +69,6 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
         return Scaffold(
           appBar: AppBar(title: Text(l10n.automationsTitle)),
           body: SafeArea(
-            top: false,
             child: automations.isEmpty
                 ? Center(
                     child: EmptyState(

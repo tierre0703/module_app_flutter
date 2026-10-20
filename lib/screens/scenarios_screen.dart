@@ -101,7 +101,6 @@ class ScenariosScreen extends StatelessWidget {
             ],
           ),
           body: SafeArea(
-            top: false,
             child: scenarios.isEmpty
                 ? Center(
                     child: EmptyState(

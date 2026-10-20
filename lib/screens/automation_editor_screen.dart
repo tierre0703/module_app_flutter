@@ -467,12 +467,13 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                 ),
               ],
               const SizedBox(height: 12),
-              if (_selectedModule?.type != ModuleType.hub &&
-                  (!_hasWatchTarget || _deviceIsInput))
+              if (_selectedModule?.type == ModuleType.hub) ...[
+                // Hub output dropdown already rendered above — skip to state.
+              ] else if (!_hasWatchTarget || _deviceIsInput)
                 Text(_deviceIsInput
                     ? l10n.actionPickerNoInputs
                     : l10n.actionPickerNoOutputs)
-              else if (_selectedModule?.type != ModuleType.hub && _hasWatchTarget)
+              else if (_hasWatchTarget)
                 DropdownButtonFormField<int>(
                   // Watched output wired by index; the label is resolved
                   // live so a rename does not orphan the trigger.
@@ -497,8 +498,10 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                     _deviceChannelName = _channelNameAt(m, v);
                   }),
                 ),
-              if (_hasWatchTarget) ...[
-                const SizedBox(height: 12),
+              if (_selectedModule?.type == ModuleType.hub || _hasWatchTarget) ...[
+                // Only show state selector when there's actually a target.
+                if (_selectedModule?.type != ModuleType.hub && _hasWatchTarget)
+                  const SizedBox(height: 12),
                 // Hub modules support ON/OFF/Pulse for IF triggers.
                 if (_selectedModule?.type == ModuleType.hub) ...[
                   SegmentedButton<String>(
