@@ -110,7 +110,12 @@ class ScenariosScreen extends StatelessWidget {
                     ),
                   )
                 : ReorderableListView.builder(
-                    padding: const EdgeInsets.all(AppSpacing.outerPadding),
+                    padding: EdgeInsets.only(
+                      left: AppSpacing.outerPadding,
+                      right: AppSpacing.outerPadding,
+                      top: AppSpacing.outerPadding,
+                      bottom: AppSpacing.outerPadding + 80.0,
+                    ),
                     itemCount: scenarios.length,
                     buildDefaultDragHandles: false,
                     onReorderItem: _store.reorder,

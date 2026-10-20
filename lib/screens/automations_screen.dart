@@ -76,7 +76,12 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                         icon: Icons.rule_outlined,
                         message: l10n.automationsEmpty))
                 : ListView.separated(
-                    padding: const EdgeInsets.all(AppSpacing.outerPadding),
+                    padding: EdgeInsets.only(
+                      left: AppSpacing.outerPadding,
+                      right: AppSpacing.outerPadding,
+                      top: AppSpacing.outerPadding,
+                      bottom: AppSpacing.outerPadding + 80.0,
+                    ),
                     itemCount: automations.length,
                     separatorBuilder: (_, __) =>
                         const SizedBox(height: AppSpacing.betweenCards),
