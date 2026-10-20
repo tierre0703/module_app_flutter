@@ -101,11 +101,12 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
         return [];
       case ModuleType.hub:
         return List.generate(
-            8,
+            11,
             (i) => ChannelOutput(
                 id: 'new-h$i',
-                name: l10n.addModuleOutput(i + 1),
-                icon: Icons.electrical_services));
+                name: i < 8 ? l10n.addModuleOutput(i + 1) : 'Modbus Output ${i - 7}',
+                icon: Icons.electrical_services,
+                isModbusPower: i >= 8));
     }
   }
 

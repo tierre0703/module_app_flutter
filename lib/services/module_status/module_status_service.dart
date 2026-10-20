@@ -31,6 +31,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 import '../../core/logger/network_debug_logger.dart';
 import '../../core/soleux/soleux_device_event.dart';
@@ -50,6 +51,8 @@ import 'soleux_control_api_service.dart';
 import 'soleux_http_service.dart';
 import 'soleux_json_fetcher.dart';
 import 'soleux_json_service.dart';
+import 'hub_api_protocol.dart';
+import 'module_tcp_service.dart';
 
 /// Formats a [DateTime] for the device's system-log filters
 /// (`log_from`/`log_to`, `YYYY-MM-DD HH:MM:SS`).
@@ -1192,11 +1195,10 @@ class ModuleStatusService {
       return false;
     }
 
-    // Hub modules use protocol 1, not the standard Control API. Skip the
-    // standard probe for hub modules - the hub control screen handles its
-    // own connection.
+    // Hub modules use protocol 1, not the standard Control API.
     if (live.type == ModuleType.hub) {
-      _applyReachability(live, alive: false);
+      // Fire and forget: the hub probe runs async and sets reachability.
+      _probeHub(live);
       return false;
     }
 
@@ -1385,6 +1387,87 @@ class ModuleStatusService {
     } catch (e, st) {
       debugPrint('Module ${live.name} (${live.id}) JSON hello failed: $e\n$st');
       return false;
+    }
+  }
+
+  /// Probes a modbus HUB module with `get_device_info` and `get_dashboard`,
+  /// then applies the live data (system status, regular outputs and modbus
+  /// power outputs) to the module store.
+  Future<void> _probeHub(DeviceModule live) async {
+    final connection = ModuleTcpConnection(
+      host: live.host,
+      port: live.controlApiPort,
+      timeout: const Duration(seconds: 5),
+    );
+    final protocol = HubJsonProtocol(connection);
+    try {
+      await connection.connect();
+      if (!connection.isConnected) {
+        _applyReachability(live, alive: false);
+        return;
+      }
+
+      final hello = await protocol.hello();
+      if (!hello.ok) {
+        _applyReachability(live, alive: false);
+        return;
+      }
+
+      final infoResp = await protocol.getDeviceInfo();
+      if (infoResp.ok && infoResp.result != null) {
+        final info = HubDeviceInfo.fromResult(infoResp.result!);
+        if (info.name != null && info.name!.isNotEmpty) {
+          live.name = info.name!;
+        }
+        if (info.serial != null) live.serial = info.serial;
+        if (info.mac != null) live.mac = info.mac;
+        if (info.appFirmware != null) live.firmware = info.appFirmware;
+      }
+
+      final dashResp = await protocol.getDashboard();
+      if (dashResp.ok && dashResp.result != null) {
+        final dash = HubDashboardData.fromResult(dashResp.result!);
+
+        // Sync channels: regular outputs first, then modbus power outputs.
+        final totalChannels = dash.outputs.length + dash.modbusOutputs.length;
+        while (live.channels.length < totalChannels) {
+          final isModbus = live.channels.length >= dash.outputs.length;
+          live.channels.add(ChannelOutput(
+            id: '${live.id}h${live.channels.length}',
+            name: isModbus
+                ? 'Modbus Output ${live.channels.length - dash.outputs.length + 1}'
+                : 'Output ${live.channels.length + 1}',
+            icon: Icons.electrical_services,
+            isModbusPower: isModbus,
+          ));
+        }
+        if (live.channels.length > totalChannels) {
+          live.channels.removeRange(totalChannels, live.channels.length);
+        }
+        for (int i = 0; i < dash.outputs.length && i < live.channels.length; i++) {
+          final state = dash.outputs[i];
+          live.channels[i].name = state.name.isNotEmpty ? state.name : live.channels[i].name;
+          live.channels[i].isOn = state.state;
+          live.channels[i].isModbusPower = false;
+        }
+        for (int i = 0; i < dash.modbusOutputs.length && i + dash.outputs.length < live.channels.length; i++) {
+          final state = dash.modbusOutputs[i];
+          final ci = dash.outputs.length + i;
+          live.channels[ci].name = state.name.isNotEmpty ? state.name : 'Modbus Output ${i + 1}';
+          live.channels[ci].isOn = state.state;
+          live.channels[ci].isModbusPower = true;
+        }
+
+        if (dash.cpuTemp != null) live.internalTempC = dash.cpuTemp!;
+      }
+
+      _applyReachability(live, alive: true);
+      _scheduleCommit();
+    } catch (e, st) {
+      debugPrint('Hub probe failed for ${live.name} (${live.id}): $e\n$st');
+      _applyReachability(live, alive: false);
+    } finally {
+      protocol.dispose();
     }
   }
 
