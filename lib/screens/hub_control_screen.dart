@@ -377,25 +377,31 @@ class _HubControlScreenState extends State<HubControlScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(module.name),
-        actions: [
-          IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: l10n.relayRefreshTooltip,
-              onPressed: _refresh),
-          IconButton(
-              icon: const Icon(Icons.receipt_long_outlined),
-              tooltip: l10n.systemLogTooltip,
-              onPressed: () => showSystemLogScreen(context, module)),
-          IconButton(
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: _editModuleInfo),
-        ],
       ),
       body: SafeArea(
         top: false,
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.outerPadding),
           children: [
+            // Action buttons row.
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                    icon: const Icon(Icons.refresh),
+                    tooltip: l10n.relayRefreshTooltip,
+                    onPressed: _refresh),
+                IconButton(
+                    icon: const Icon(Icons.receipt_long_outlined),
+                    tooltip: l10n.systemLogTooltip,
+                    onPressed: () => showSystemLogScreen(
+                        context, module)),
+                IconButton(
+                    icon: const Icon(Icons.edit_outlined),
+                    onPressed: _editModuleInfo),
+              ],
+            ),
+            const SizedBox(height: 8),
             ModuleStatusHeader(module: module),
 
             if (di != null) ...[
