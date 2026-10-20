@@ -713,6 +713,18 @@ extension InputActionStateX on InputActionState {
       };
 }
 
+/// Which output bank a scenario/automation action targets on a Modbus HUB
+/// module. Normal outputs are the regular relay/PDU outputs; modbus power
+/// outputs are the Modbus-controlled power channels.
+enum HubOutputBank { normal, modbusPower }
+
+extension HubOutputBankX on HubOutputBank {
+  String get label => switch (this) {
+        HubOutputBank.normal => 'Output',
+        HubOutputBank.modbusPower => 'Modbus Output',
+      };
+}
+
 /// Resolves the [ChannelOutput] a manual-dimmer scenario's target points at,
 /// or null when the module/channel no longer exists.
 ///
@@ -789,6 +801,9 @@ class ScenarioAction {
     this.inputName = '',
     this.inputIndex = -1,
     this.inputState = InputActionState.on,
+    this.isHubAction = false,
+    this.hubOutputBank = HubOutputBank.normal,
+    this.hubActionPulse = false,
   });
 
   /// Display label; also the legacy fallback when [moduleIndex] is unknown.
@@ -821,11 +836,27 @@ class ScenarioAction {
 
   final InputActionState inputState;
 
+  // ----- Hub-specific fields -----
+
+  /// True when this action targets a Modbus HUB output bank.
+  /// When set, [isDimmerAction] and [isInputAction] are both false, and the
+  /// channel target is selected by [hubOutputBank] rather than from a plain
+  /// channel list.
+  final bool isHubAction;
+
+  /// Which output bank on the HUB this action targets.
+  final HubOutputBank hubOutputBank;
+
+  /// When true, the action is a Pulse (ON then OFF) instead of a plain ON/OFF.
+  final bool hubActionPulse;
+
   String get summary => isInputAction
       ? '$inputName -> ${inputState.label}'
       : isDimmerAction
           ? '$channelName -> $brightnessPct%'
-          : '$channelName -> ${turnOn ? 'ON' : 'OFF'}';
+          : isHubAction
+              ? '$channelName -> ${hubActionPulse ? "Pulse" : turnOn ? "ON" : "OFF"}'
+              : '$channelName -> ${turnOn ? 'ON' : 'OFF'}';
 
   Map<String, Object?> toJson() => {
         'moduleName': moduleName,
@@ -840,6 +871,11 @@ class ScenarioAction {
         'inputName': inputName,
         'inputIndex': inputIndex,
         if (isInputAction) 'inputState': inputState.name,
+        if (isHubAction) ...[
+          'isHubAction': true,
+          'hubOutputBank': hubOutputBank.name,
+          'hubActionPulse': hubActionPulse,
+        ],
       };
 
   factory ScenarioAction.fromJson(Map<String, Object?> json) => ScenarioAction(
@@ -860,6 +896,12 @@ class ScenarioAction {
           'pulse' => InputActionState.pulse,
           _ => InputActionState.on,
         },
+        isHubAction: json['isHubAction'] as bool? ?? false,
+        hubOutputBank: switch (json['hubOutputBank'] as String?) {
+          'modbusPower' => HubOutputBank.modbusPower,
+          _ => HubOutputBank.normal,
+        },
+        hubActionPulse: json['hubActionPulse'] as bool? ?? false,
       );
 }
 

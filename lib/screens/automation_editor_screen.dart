@@ -56,6 +56,8 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
   late String _deviceModuleName = widget.automation?.watchModuleName ?? '';
   late String _deviceInputName = widget.automation?.watchInputName ?? '';
   late String _deviceChannelName = widget.automation?.watchChannelName ?? '';
+  // Hub-specific trigger fields
+  late bool _watchIsHubModbus = false;
 
   /// Modules that expose at least one channel output or enabled input, i.e.
   /// everything the device-state trigger can watch. Disabled inputs are not
@@ -93,9 +95,15 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
   String get _watchTargetName {
     final m = _selectedModule;
     if (m != null) {
+      if (m.type == ModuleType.hub && _watchIsHubModbus) {
+        return 'Modbus ${_channelNameAt(m, _watchChannelIndex)}';
+      }
       return _deviceIsInput
           ? _inputNameAt(m, _watchInputIndex)
           : _channelNameAt(m, _watchChannelIndex);
+    }
+    if (m.type == ModuleType.hub && _watchIsHubModbus) {
+      return 'Modbus ${_channelNameAt(m, _watchChannelIndex)}';
     }
     return _deviceIsInput ? _deviceInputName : _deviceChannelName;
   }
@@ -111,9 +119,7 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
   bool get _hasWatchTarget {
     final m = _selectedModule;
     if (m == null) return false;
-    return _deviceIsInput
-        ? _inputIndices.isNotEmpty
-        : _outputIndices.isNotEmpty;
+    return _outputIndices.isNotEmpty;
   }
 
   @override
@@ -164,7 +170,14 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
       _watchChannelIndex = -1;
       return;
     }
-    if (_deviceIsInput) {
+    if (m.type == ModuleType.hub) {
+      final isModbus = _watchIsHubModbus;
+      if (!_outputIndices.contains(_watchChannelIndex)) {
+        _watchChannelIndex =
+            _outputIndices.isNotEmpty ? _outputIndices.first : -1;
+      }
+      _deviceChannelName = _channelNameAt(m, _watchChannelIndex);
+    } else if (_deviceIsInput) {
       if (!_inputIndices.contains(_watchInputIndex)) {
         _watchInputIndex = _inputIndices.isNotEmpty ? _inputIndices.first : -1;
       }
@@ -189,7 +202,14 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
       _deviceChannelName = '';
       return;
     }
-    if (_deviceIsInput) {
+    if (m.type == ModuleType.hub) {
+      _watchIsHubModbus = false;
+      _watchInputIndex = -1;
+      _deviceInputName = '';
+      _watchChannelIndex =
+          _outputIndices.isNotEmpty ? _outputIndices.first : -1;
+      _deviceChannelName = _channelNameAt(m, _watchChannelIndex);
+    } else if (_deviceIsInput) {
       _watchInputIndex = _inputIndices.isNotEmpty ? _inputIndices.first : -1;
       _deviceInputName = _inputNameAt(m, _watchInputIndex);
     } else {
@@ -257,6 +277,8 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
       a.watchChannelIndex =
           watching && !_deviceIsInput ? _watchChannelIndex : -1;
       a.watchState = watching && _deviceTurnsOn;
+      // Hub modbus flag not persisted (UI-only reset safeguard); triggers
+      // treat _watchIsHubModbus as a derived state from the module type.
       a.actions
         ..clear()
         ..addAll(_actions);
@@ -370,23 +392,44 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                 }),
               ),
               const SizedBox(height: 12),
-              SegmentedButton<bool>(
-                segments: [
-                  ButtonSegment(
-                      value: true,
-                      label: Text(l10n.actionPickerInputTarget),
-                      icon: const Icon(Icons.touch_app_outlined)),
-                  ButtonSegment(
-                      value: false,
-                      label: Text(l10n.actionPickerOutputTarget),
-                      icon: const Icon(Icons.output_outlined)),
-                ],
-                selected: {_deviceIsInput},
-                onSelectionChanged: (s) => setState(() {
-                  _deviceIsInput = s.first;
-                  _resetWatchTargetToFirst();
-                }),
-              ),
+              if (_selectedModule?.type == ModuleType.hub) ...[
+                // Hub modules: Output vs Modbus Power instead of Input vs Output.
+                SegmentedButton<String>(
+                  segments: [
+                    ButtonSegment(
+                        value: 'output',
+                        label: Text('Output'),
+                        icon: const Icon(Icons.output_outlined)),
+                    ButtonSegment(
+                        value: 'modbus',
+                        label: Text('Modbus'),
+                        icon: const Icon(Icons.electrical_services)),
+                  ],
+                  selected: {_watchIsHubModbus ? 'modbus' : 'output'},
+                  onSelectionChanged: (s) => setState(() {
+                    _watchIsHubModbus = s.first == 'modbus';
+                    _resetWatchTargetToFirst();
+                  }),
+                ),
+              ] else ...[
+                SegmentedButton<bool>(
+                  segments: [
+                    ButtonSegment(
+                        value: true,
+                        label: Text(l10n.actionPickerInputTarget),
+                        icon: const Icon(Icons.touch_app_outlined)),
+                    ButtonSegment(
+                        value: false,
+                        label: Text(l10n.actionPickerOutputTarget),
+                        icon: const Icon(Icons.output_outlined)),
+                  ],
+                  selected: {_deviceIsInput},
+                  onSelectionChanged: (s) => setState(() {
+                    _deviceIsInput = s.first;
+                    _resetWatchTargetToFirst();
+                  }),
+                ),
+              ],
               const SizedBox(height: 12),
               if (!_hasWatchTarget)
                 Text(_deviceIsInput
@@ -437,17 +480,36 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                 ),
               if (_hasWatchTarget) ...[
                 const SizedBox(height: 12),
-                SegmentedButton<bool>(
-                  segments: [
-                    ButtonSegment(
-                        value: true, label: Text(l10n.automationTurnsOn)),
-                    ButtonSegment(
-                        value: false, label: Text(l10n.automationTurnsOff)),
-                  ],
-                  selected: {_deviceTurnsOn},
-                  onSelectionChanged: (s) =>
-                      setState(() => _deviceTurnsOn = s.first),
-                ),
+                // Hub modules support ON/OFF/Pulse for IF triggers.
+                if (_selectedModule?.type == ModuleType.hub) ...[
+                  SegmentedButton<String>(
+                    segments: [
+                      ButtonSegment(
+                          value: 'on', label: Text(l10n.automationTurnsOn)),
+                      ButtonSegment(
+                          value: 'off', label: Text(l10n.automationTurnsOff)),
+                      ButtonSegment(
+                          value: 'pulse', label: Text('Pulse')),
+                    ],
+                    selected: {_deviceTurnsOn ? 'on' : 'off'},
+                    onSelectionChanged: (s) => setState(() {
+                      final v = s.first;
+                      _deviceTurnsOn = v != 'off';
+                    }),
+                  ),
+                ] else ...[
+                  SegmentedButton<bool>(
+                    segments: [
+                      ButtonSegment(
+                          value: true, label: Text(l10n.automationTurnsOn)),
+                      ButtonSegment(
+                          value: false, label: Text(l10n.automationTurnsOff)),
+                    ],
+                    selected: {_deviceTurnsOn},
+                    onSelectionChanged: (s) =>
+                        setState(() => _deviceTurnsOn = s.first),
+                  ),
+                ],
               ],
             ],
             const SizedBox(height: 24),

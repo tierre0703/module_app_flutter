@@ -52,6 +52,8 @@ Future<ScenarioAction?> showAddActionSheet(
   bool turnOn = initial?.turnOn ?? true;
   int brightness = initial?.brightnessPct ?? 100;
   InputActionState inputState = initial?.inputState ?? InputActionState.on;
+  HubOutputBank hubOutputBank = initial?.hubOutputBank ?? HubOutputBank.normal;
+  bool hubActionPulse = initial?.hubActionPulse ?? false;
 
   /// Keeps the index pair in sync with the currently selected module/channel.
   void selectModule(DeviceModule? m) {
@@ -77,6 +79,19 @@ Future<ScenarioAction?> showAddActionSheet(
           module?.type == ModuleType.dimmerAc) {
         inputState = InputActionState.pulse;
       }
+    } else if (initial?.isHubAction ?? false) {
+      // Hub target — channelIndex references the Hub's normal-output list but
+      // the output bank decides which physical list to target.
+      if (module != null) channelIndex = _resolveChannelIndex(module!, initial);
+      if (module != null &&
+          channelIndex < 0 &&
+          module!.channels.isEmpty &&
+          outputModules.isNotEmpty) {
+        selectModule(outputModules.first);
+        channelIndex = _resolveChannelIndex(module!, initial);
+      }
+      hubOutputBank = initial!.hubOutputBank;
+      hubActionPulse = initial!.hubActionPulse;
     } else {
       if (module != null) channelIndex = _resolveChannelIndex(module!, initial);
       if (module != null &&
@@ -108,6 +123,7 @@ Future<ScenarioAction?> showAddActionSheet(
         builder: (context, setSheetState) {
           final bool isDimmerModule = module?.type == ModuleType.dimmerDc ||
               module?.type == ModuleType.dimmerAc;
+          final bool isHubModule = module?.type == ModuleType.hub;
 
           void switchTarget(bool toInput) {
             setSheetState(() {
@@ -200,58 +216,102 @@ Future<ScenarioAction?> showAddActionSheet(
                     Text(l10n.actionPickerTargetLabel,
                         style: Theme.of(context).textTheme.bodyLarge),
                     const SizedBox(height: 8),
-                    SegmentedButton<bool>(
-                      segments: [
-                        ButtonSegment(
-                          value: false,
-                          label: Text(l10n.actionPickerOutputTarget),
-                          icon: const Icon(Icons.output_outlined),
-                        ),
-                        ButtonSegment(
-                          value: true,
-                          label: Text(l10n.actionPickerInputTarget),
-                          icon: const Icon(Icons.touch_app_outlined),
-                        ),
-                      ],
-                      selected: {isInputTarget},
-                      onSelectionChanged: (s) => switchTarget(s.first),
-                    ),
-                    const SizedBox(height: 12),
-                    if (isInputTarget)
-                      if (_enabledInputs(module?.inputs).isEmpty)
-                        Text(l10n.actionPickerNoInputs)
+                    if (isHubModule) ...[
+                      // Hub modules: choose between normal Output and
+                      // Modbus Power output bank instead of Output vs Input.
+                      SegmentedButton<HubOutputBank>(
+                        segments: [
+                          ButtonSegment(
+                            value: HubOutputBank.normal,
+                            label: Text('Output'),
+                            icon: const Icon(Icons.output_outlined),
+                          ),
+                          ButtonSegment(
+                            value: HubOutputBank.modbusPower,
+                            label: Text('Modbus'),
+                            icon: const Icon(Icons.electrical_services),
+                          ),
+                        ],
+                        selected: {hubOutputBank},
+                        onSelectionChanged: (s) => setSheetState(()
+                            => hubOutputBank = s.first),
+                      ),
+                      const SizedBox(height: 12),
+                      if (module?.channels.isEmpty ?? true)
+                        Text(l10n.actionPickerNoOutputs)
                       else
                         DropdownButtonFormField<int>(
-                          initialValue: inputIndex >= 0 ? inputIndex : null,
+                          initialValue:
+                              channelIndex >= 0 ? channelIndex : null,
                           decoration: InputDecoration(
-                              labelText: l10n.actionPickerInputLabel),
+                              labelText: l10n.actionPickerOutputLabel),
                           items: [
-                            for (final i in _enabledInputs(module?.inputs))
+                            for (var c = 0;
+                                c < (module?.channels.length ?? 0);
+                                c++)
                               DropdownMenuItem(
-                                  value: module!.inputs.indexOf(i),
-                                  child: Text(i.name)),
+                                  value: c,
+                                  child: Text(module!.channels[c].name)),
                           ],
-                          onChanged: (i) =>
-                              setSheetState(() => inputIndex = i ?? inputIndex),
-                        )
-                    else if (module?.channels.isEmpty ?? true)
-                      Text(l10n.actionPickerNoOutputs)
-                    else
-                      DropdownButtonFormField<int>(
-                        initialValue: channelIndex >= 0 ? channelIndex : null,
-                        decoration: InputDecoration(
-                            labelText: l10n.actionPickerOutputLabel),
-                        items: [
-                          for (var c = 0;
-                              c < (module?.channels.length ?? 0);
-                              c++)
-                            DropdownMenuItem(
-                                value: c,
-                                child: Text(module!.channels[c].name)),
+                          onChanged: (c) => setSheetState(
+                              () => channelIndex = c ?? channelIndex),
+                        ),
+                    ] else ...[
+                      SegmentedButton<bool>(
+                        segments: [
+                          ButtonSegment(
+                            value: false,
+                            label: Text(l10n.actionPickerOutputTarget),
+                            icon: const Icon(Icons.output_outlined),
+                          ),
+                          ButtonSegment(
+                            value: true,
+                            label: Text(l10n.actionPickerInputTarget),
+                            icon: const Icon(Icons.touch_app_outlined),
+                          ),
                         ],
-                        onChanged: (c) => setSheetState(
-                            () => channelIndex = c ?? channelIndex),
+                        selected: {isInputTarget},
+                        onSelectionChanged: (s) => switchTarget(s.first),
                       ),
+                      const SizedBox(height: 12),
+                      if (isInputTarget)
+                        if (_enabledInputs(module?.inputs).isEmpty)
+                          Text(l10n.actionPickerNoInputs)
+                        else
+                          DropdownButtonFormField<int>(
+                            initialValue:
+                                inputIndex >= 0 ? inputIndex : null,
+                            decoration: InputDecoration(
+                                labelText: l10n.actionPickerInputLabel),
+                            items: [
+                              for (final i in _enabledInputs(module?.inputs))
+                                DropdownMenuItem(
+                                    value: module!.inputs.indexOf(i),
+                                    child: Text(i.name)),
+                            ],
+                            onChanged: (i) => setSheetState(
+                                () => inputIndex = i ?? inputIndex),
+                          )
+                      else if (module?.channels.isEmpty ?? true)
+                        Text(l10n.actionPickerNoOutputs)
+                      else
+                        DropdownButtonFormField<int>(
+                          initialValue:
+                              channelIndex >= 0 ? channelIndex : null,
+                          decoration: InputDecoration(
+                              labelText: l10n.actionPickerOutputLabel),
+                          items: [
+                            for (var c = 0;
+                                c < (module?.channels.length ?? 0);
+                                c++)
+                              DropdownMenuItem(
+                                  value: c,
+                                  child: Text(module!.channels[c].name)),
+                          ],
+                          onChanged: (c) => setSheetState(
+                              () => channelIndex = c ?? channelIndex),
+                        ),
+                    ],
                     const SizedBox(height: 16),
                     if (isInputTarget) ...[
                       Text(l10n.actionPickerState,
@@ -278,6 +338,30 @@ Future<ScenarioAction?> showAddActionSheet(
                         selected: {inputState},
                         onSelectionChanged: (s) =>
                             setSheetState(() => inputState = s.first),
+                      ),
+                    ] else if (isHubModule) ...[
+                      Text(l10n.actionPickerState,
+                          style: Theme.of(context).textTheme.bodyLarge),
+                      const SizedBox(height: 8),
+                      SegmentedButton<String>(
+                        segments: [
+                          ButtonSegment(
+                              value: 'on', label: Text(l10n.on)),
+                          ButtonSegment(
+                              value: 'off', label: Text(l10n.off)),
+                          ButtonSegment(
+                              value: 'pulse', label: Text('Pulse')),
+                        ],
+                        selected: {hubActionPulse ? 'pulse' : turnOn ? 'on' : 'off'},
+                        onSelectionChanged: (s) => setSheetState(() {
+                          final v = s.first;
+                          if (v == 'pulse') {
+                            hubActionPulse = true;
+                          } else {
+                            hubActionPulse = false;
+                            turnOn = v == 'on';
+                          }
+                        }),
                       ),
                     ] else if (isDimmer) ...[
                       Text(l10n.actionPickerBrightness(brightness),
@@ -321,22 +405,19 @@ Future<ScenarioAction?> showAddActionSheet(
                                 ScenarioAction(
                                   moduleName: module!.name,
                                   moduleIndex: moduleIndex,
-                                  channelName: isInputTarget
-                                      ? ''
-                                      : module!.channels[channelIndex].name,
+                                  channelName: module!.channels[channelIndex].name,
                                   channelIndex: channelIndex,
-                                  icon: isInputTarget
-                                      ? Icons.touch_app_outlined
-                                      : module!.channels[channelIndex].icon,
-                                  isDimmerAction: isDimmer,
+                                  icon: module!.channels[channelIndex].icon,
+                                  isDimmerAction: false,
                                   turnOn: turnOn,
                                   brightnessPct: brightness,
-                                  isInputAction: isInputTarget,
-                                  inputName: isInputTarget
-                                      ? module!.inputs[inputIndex].name
-                                      : '',
-                                  inputIndex: inputIndex,
-                                  inputState: inputState,
+                                  isInputAction: false,
+                                  inputName: '',
+                                  inputIndex: -1,
+                                  inputState: InputActionState.on,
+                                  isHubAction: isHubModule,
+                                  hubOutputBank: hubOutputBank,
+                                  hubActionPulse: hubActionPulse,
                                 ),
                               ),
                       child: Text(isEditing
