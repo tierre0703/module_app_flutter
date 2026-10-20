@@ -103,6 +103,7 @@ class _RelayControlScreenState extends State<RelayControlScreen> {
       outputName: module.channels[index].name,
       on: next,
     );
+    // EventLogStore already logs the action - no local cache needed.
     final l10n = AppLocalizations.of(context);
     final service = ModuleStatusService.shared;
     try {

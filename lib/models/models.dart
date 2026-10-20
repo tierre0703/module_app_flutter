@@ -871,11 +871,9 @@ class ScenarioAction {
         'inputName': inputName,
         'inputIndex': inputIndex,
         if (isInputAction) 'inputState': inputState.name,
-        if (isHubAction) ...[
-          'isHubAction': true,
-          'hubOutputBank': hubOutputBank.name,
-          'hubActionPulse': hubActionPulse,
-        ],
+        if (isHubAction) 'isHubAction': true,
+        if (isHubAction) 'hubOutputBank': hubOutputBank.name,
+        if (isHubAction) 'hubActionPulse': hubActionPulse,
       };
 
   factory ScenarioAction.fromJson(Map<String, Object?> json) => ScenarioAction(

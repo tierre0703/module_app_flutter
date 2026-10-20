@@ -54,6 +54,9 @@ Future<ScenarioAction?> showAddActionSheet(
   InputActionState inputState = initial?.inputState ?? InputActionState.on;
   HubOutputBank hubOutputBank = initial?.hubOutputBank ?? HubOutputBank.normal;
   bool hubActionPulse = initial?.hubActionPulse ?? false;
+  // Track whether the initial action is hub-based so we can branch
+  // before module is resolved.
+  final bool initialIsHubAction = initial?.isHubAction ?? false;
 
   /// Keeps the index pair in sync with the currently selected module/channel.
   void selectModule(DeviceModule? m) {
@@ -79,27 +82,27 @@ Future<ScenarioAction?> showAddActionSheet(
           module?.type == ModuleType.dimmerAc) {
         inputState = InputActionState.pulse;
       }
-    } else if (initial?.isHubAction ?? false) {
+    } else if (initialIsHubAction) {
       // Hub target — channelIndex references the Hub's normal-output list but
       // the output bank decides which physical list to target.
-      if (module != null) channelIndex = _resolveChannelIndex(module!, initial);
-      if (module != null &&
-          channelIndex < 0 &&
-          module!.channels.isEmpty &&
-          outputModules.isNotEmpty) {
-        selectModule(outputModules.first);
-        channelIndex = _resolveChannelIndex(module!, initial);
+      if (module != null) {
+        final m = module!;
+        channelIndex = _resolveChannelIndex(m, initial);
+        if (channelIndex < 0 && m.channels.isNotEmpty && outputModules.isNotEmpty) {
+          selectModule(outputModules.first);
+          channelIndex = _resolveChannelIndex(m, initial);
+        }
       }
-      hubOutputBank = initial!.hubOutputBank;
-      hubActionPulse = initial!.hubActionPulse;
+      hubOutputBank = initial.hubOutputBank;
+      hubActionPulse = initial.hubActionPulse;
     } else {
-      if (module != null) channelIndex = _resolveChannelIndex(module!, initial);
-      if (module != null &&
-          channelIndex < 0 &&
-          module!.channels.isEmpty &&
-          outputModules.isNotEmpty) {
-        selectModule(outputModules.first);
-        channelIndex = _resolveChannelIndex(module!, initial);
+      if (module != null) {
+        final m = module!;
+        channelIndex = _resolveChannelIndex(m, initial);
+        if (channelIndex < 0 && m.channels.isEmpty && outputModules.isNotEmpty) {
+          selectModule(outputModules.first);
+          channelIndex = _resolveChannelIndex(m, initial);
+        }
       }
     }
   } else {

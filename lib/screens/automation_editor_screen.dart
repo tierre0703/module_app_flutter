@@ -102,9 +102,6 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
           ? _inputNameAt(m, _watchInputIndex)
           : _channelNameAt(m, _watchChannelIndex);
     }
-    if (m.type == ModuleType.hub && _watchIsHubModbus) {
-      return 'Modbus ${_channelNameAt(m, _watchChannelIndex)}';
-    }
     return _deviceIsInput ? _deviceInputName : _deviceChannelName;
   }
 
@@ -171,7 +168,7 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
       return;
     }
     if (m.type == ModuleType.hub) {
-      final isModbus = _watchIsHubModbus;
+      // _watchIsHubModbus used for hub modbus trigger selection
       if (!_outputIndices.contains(_watchChannelIndex)) {
         _watchChannelIndex =
             _outputIndices.isNotEmpty ? _outputIndices.first : -1;
