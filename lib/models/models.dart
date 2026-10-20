@@ -181,6 +181,7 @@ class ChannelOutput {
     this.brightness = 0,
     this.stepSize = 1,
     this.initialState = OutputInitialState.lastState,
+    this.isModbusPower = false,
   });
 
   final String id;
@@ -199,6 +200,10 @@ class ChannelOutput {
 
   /// State the output settles in after the module starts (`initial_state`).
   OutputInitialState initialState;
+
+  /// True when this channel is a Modbus power output on a Hub module.
+  /// Used by the action picker to show the correct set of outputs.
+  bool isModbusPower;
 
   /// [stepSize] clamped to a usable slider range.
   int get effectiveStepSize =>
@@ -224,6 +229,7 @@ class ChannelOutput {
         'brightness': brightness,
         'stepSize': stepSize,
         'initialState': initialState.name,
+        'isModbusPower': isModbusPower,
       };
 
   factory ChannelOutput.fromJson(Map<String, Object?> json) => ChannelOutput(
@@ -235,6 +241,7 @@ class ChannelOutput {
         stepSize: (json['stepSize'] as num?)?.toInt() ?? 1,
         // A legacy `enabled` key is ignored: channels are always shown.
         initialState: OutputInitialState.fromWire(json['initialState']),
+        isModbusPower: json['isModbusPower'] as bool? ?? false,
       );
 }
 

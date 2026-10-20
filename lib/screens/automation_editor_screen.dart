@@ -79,10 +79,21 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
     return null;
   }
 
-  /// Indices (within the module's channel/input list) the trigger can watch.
-  List<int> get _outputIndices => [
-        for (var i = 0; i < (_selectedModule?.channels.length ?? 0); i++) i,
+  /// Indices (within the module's channel list) the trigger can watch.
+  /// For Hub modules, filtered by the selected output bank.
+  List<int> get _outputIndices {
+    final m = _selectedModule;
+    if (m == null) return const [];
+    if (m.type == ModuleType.hub) {
+      return [
+        for (var i = 0; i < m.channels.length; i++)
+          if (m.channels[i].isModbusPower == _watchIsHubModbus) i,
       ];
+    }
+    return [
+      for (var i = 0; i < m.channels.length; i++) i,
+    ];
+  }
 
   /// Indices of the module's *enabled* inputs (a disabled input is never a
   /// watch target).
@@ -390,7 +401,7 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
               ),
               const SizedBox(height: 12),
               if (_selectedModule?.type == ModuleType.hub) ...[
-                // Hub modules: Output vs Modbus Power instead of Input vs Output.
+                // Hub modules: Output vs Modbus Power, no Input toggle.
                 SegmentedButton<String>(
                   segments: [
                     ButtonSegment(
@@ -408,7 +419,34 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                     _resetWatchTargetToFirst();
                   }),
                 ),
+                const SizedBox(height: 12),
+                if (!_hasWatchTarget)
+                  Text(l10n.actionPickerNoOutputs)
+                else
+                  DropdownButtonFormField<int>(
+                    key: ValueKey('out:$_watchChannelIndex'),
+                    initialValue: _outputIndices.contains(_watchChannelIndex)
+                        ? _watchChannelIndex
+                        : null,
+                    decoration: InputDecoration(
+                        labelText: l10n.actionPickerOutputLabel,
+                        prefixIcon: const Icon(Icons.sensors)),
+                    items: [
+                      for (final i in _outputIndices)
+                        DropdownMenuItem(
+                            value: i,
+                            child: Text(_channelNameAt(_selectedModule!, i))),
+                    ],
+                    onChanged: (v) => setState(() {
+                      if (v == null) return;
+                      final m = _selectedModule;
+                      if (m == null) return;
+                      _watchChannelIndex = v;
+                      _deviceChannelName = _channelNameAt(m, v);
+                    }),
+                  ),
               ] else ...[
+                // Non-Hub modules: Input vs Output toggle.
                 SegmentedButton<bool>(
                   segments: [
                     ButtonSegment(
@@ -428,51 +466,34 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                 ),
               ],
               const SizedBox(height: 12),
-              if (!_hasWatchTarget)
+              if (_selectedModule?.type != ModuleType.hub &&
+                  (!_hasWatchTarget || _deviceIsInput))
                 Text(_deviceIsInput
                     ? l10n.actionPickerNoInputs
                     : l10n.actionPickerNoOutputs)
-              else
+              else if (_hasWatchTarget)
                 DropdownButtonFormField<int>(
-                  // Watched output/input wired by index; the label is resolved
+                  // Watched output wired by index; the label is resolved
                   // live so a rename does not orphan the trigger.
-                  key: ValueKey(_deviceIsInput
-                      ? 'in:$_watchInputIndex'
-                      : 'out:$_watchChannelIndex'),
-                  initialValue: _deviceIsInput
-                      ? (_inputIndices.contains(_watchInputIndex)
-                          ? _watchInputIndex
-                          : null)
-                      : (_outputIndices.contains(_watchChannelIndex)
-                          ? _watchChannelIndex
-                          : null),
+                  key: ValueKey('out:$_watchChannelIndex'),
+                  initialValue: _outputIndices.contains(_watchChannelIndex)
+                      ? _watchChannelIndex
+                      : null,
                   decoration: InputDecoration(
-                      labelText: _deviceIsInput
-                          ? l10n.actionPickerInputLabel
-                          : l10n.actionPickerOutputLabel,
-                      prefixIcon: Icon(_deviceIsInput
-                          ? Icons.touch_app_outlined
-                          : Icons.sensors)),
+                      labelText: l10n.actionPickerOutputLabel,
+                      prefixIcon: const Icon(Icons.sensors)),
                   items: [
-                    for (final i
-                        in _deviceIsInput ? _inputIndices : _outputIndices)
+                    for (final i in _outputIndices)
                       DropdownMenuItem(
                           value: i,
-                          child: Text(_deviceIsInput
-                              ? _inputNameAt(_selectedModule!, i)
-                              : _channelNameAt(_selectedModule!, i))),
+                          child: Text(_channelNameAt(_selectedModule!, i))),
                   ],
                   onChanged: (v) => setState(() {
                     if (v == null) return;
                     final m = _selectedModule;
                     if (m == null) return;
-                    if (_deviceIsInput) {
-                      _watchInputIndex = v;
-                      _deviceInputName = _inputNameAt(m, v);
-                    } else {
-                      _watchChannelIndex = v;
-                      _deviceChannelName = _channelNameAt(m, v);
-                    }
+                    _watchChannelIndex = v;
+                    _deviceChannelName = _channelNameAt(m, v);
                   }),
                 ),
               if (_hasWatchTarget) ...[

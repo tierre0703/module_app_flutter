@@ -240,25 +240,35 @@ Future<ScenarioAction?> showAddActionSheet(
                             => hubOutputBank = s.first),
                       ),
                       const SizedBox(height: 12),
-                      if (module?.channels.isEmpty ?? true)
-                        Text(l10n.actionPickerNoOutputs)
-                      else
-                        DropdownButtonFormField<int>(
-                          initialValue:
-                              channelIndex >= 0 ? channelIndex : null,
+                      () {
+                        final m = module;
+                        if (m == null) return Text(l10n.actionPickerNoOutputs);
+                        final filtered = <int>[
+                          for (var c = 0; c < m.channels.length; c++)
+                            if (hubOutputBank == HubOutputBank.modbusPower
+                                ? m.channels[c].isModbusPower
+                                : !m.channels[c].isModbusPower)
+                              c,
+                        ];
+                        if (filtered.isEmpty)
+                          return Text(l10n.actionPickerNoOutputs);
+                        if (channelIndex < 0 || !filtered.contains(channelIndex)) {
+                          channelIndex = filtered.first;
+                        }
+                        return DropdownButtonFormField<int>(
+                          initialValue: channelIndex,
                           decoration: InputDecoration(
                               labelText: l10n.actionPickerOutputLabel),
                           items: [
-                            for (var c = 0;
-                                c < (module?.channels.length ?? 0);
-                                c++)
+                            for (final c in filtered)
                               DropdownMenuItem(
                                   value: c,
-                                  child: Text(module!.channels[c].name)),
+                                  child: Text(m.channels[c].name)),
                           ],
-                          onChanged: (c) => setSheetState(
-                              () => channelIndex = c ?? channelIndex),
-                        ),
+                          onChanged: (v) => setSheetState(
+                              () => channelIndex = v ?? channelIndex),
+                        );
+                      }(),
                     ] else ...[
                       SegmentedButton<bool>(
                         segments: [

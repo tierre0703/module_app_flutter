@@ -201,18 +201,21 @@ class _HubControlScreenState extends State<HubControlScreen> {
   void _syncToStore() {
     final dash = _dashboard;
     if (dash == null) return;
+    final totalChannels = dash.outputs.length + dash.modbusOutputs.length;
     ModuleStore.shared.update(widget.module.id, (m) {
       m.status = ConnectionStatus.online;
       m.lastSeenAt = DateTime.now();
-      while (m.channels.length < dash.outputs.length) {
+      while (m.channels.length < totalChannels) {
+        final isModbus = m.channels.length >= dash.outputs.length;
         m.channels.add(ChannelOutput(
           id: '${m.id}h${m.channels.length}',
-          name: 'Output ${m.channels.length + 1}',
+          name: isModbus ? 'Modbus Output ${m.channels.length - dash.outputs.length + 1}' : 'Output ${m.channels.length + 1}',
           icon: Icons.electrical_services,
+          isModbusPower: isModbus,
         ));
       }
-      if (m.channels.length > dash.outputs.length) {
-        m.channels.removeRange(dash.outputs.length, m.channels.length);
+      if (m.channels.length > totalChannels) {
+        m.channels.removeRange(totalChannels, m.channels.length);
       }
       for (int i = 0; i < dash.outputs.length && i < m.channels.length; i++) {
         final state = dash.outputs[i];
@@ -220,6 +223,16 @@ class _HubControlScreenState extends State<HubControlScreen> {
             ? state.name
             : m.channels[i].name;
         m.channels[i].isOn = state.state;
+        m.channels[i].isModbusPower = false;
+      }
+      for (int i = 0; i < dash.modbusOutputs.length && i + dash.outputs.length < m.channels.length; i++) {
+        final state = dash.modbusOutputs[i];
+        final ci = dash.outputs.length + i;
+        m.channels[ci].name = state.name.isNotEmpty
+            ? state.name
+            : 'Modbus Output ${i + 1}';
+        m.channels[ci].isOn = state.state;
+        m.channels[ci].isModbusPower = true;
       }
       if (dash.cpuTemp != null) m.internalTempC = dash.cpuTemp!;
     });
