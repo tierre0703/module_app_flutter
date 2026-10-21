@@ -3,12 +3,16 @@
 // A responsive tile grid that arranges children in a Wrap layout with a
 // configurable number of columns (default 2 on narrow, 4 on wide).
 //
-// Reordering: each tile has a drag handle. Long-press the drag handle to
-// start dragging, then drop onto another tile to swap positions.
+// Reordering: each tile has a drag handle. Drag the handle to reorder.
+// Uses LongPressDraggable + DragTarget which requires long-press to start
+// dragging; the drag handle icon provides the visual affordance.
 import 'package:flutter/material.dart';
 
 /// Signature for the reorder callback.
 typedef ReorderItemCallback = void Function(int oldIndex, int newIndex);
+
+/// Builder for a per-tile drag handle widget.
+typedef DragHandleBuilder = Widget Function(BuildContext context, int index);
 
 /// A responsive tile grid with drag-and-drop reorder support.
 ///
@@ -16,13 +20,16 @@ typedef ReorderItemCallback = void Function(int oldIndex, int newIndex);
 /// - Narrow (< [breakpoint]): [narrowColumns] columns (default 2 for phones)
 /// - Wide   (>= [breakpoint]): [wideColumns] columns (default 4 for tablets)
 ///
-/// Reordering: drag the drag handle on any tile to reorder. Uses
-/// LongPressDraggable + DragTarget for a grid-compatible drag-and-drop.
+/// Reordering: long-press the drag handle on any tile to reorder. The
+/// [dragHandleBuilder] callback supplies a drag handle widget for each
+/// tile (e.g., a drag indicator icon). When omitted, the entire tile acts
+/// as the drag initiator.
 class ReorderableTileGrid extends StatefulWidget {
   const ReorderableTileGrid({
     super.key,
     required this.children,
     required this.onReorderItem,
+    this.dragHandleBuilder,
     this.spacing = 12,
     this.runSpacing = 12,
     this.narrowColumns = 2,
@@ -33,6 +40,11 @@ class ReorderableTileGrid extends StatefulWidget {
 
   final List<Widget> children;
   final ReorderItemCallback onReorderItem;
+
+  /// Optional per-tile drag handle widget builder. When provided, the
+  /// handle is placed at the top-right of each tile as a drag affordance.
+  final DragHandleBuilder? dragHandleBuilder;
+
   final double spacing;
   final double runSpacing;
   final int narrowColumns;
@@ -79,7 +91,8 @@ class _ReorderableTileGridState extends State<ReorderableTileGrid> {
           spacing: spacing,
           runSpacing: runSpacing,
           children: List.generate(children.length, (i) {
-            final isHoverTarget = i == _hoverTargetIndex && i != _dragSourceIndex && _dragSourceIndex >= 0;
+            final isHoverTarget = i == _hoverTargetIndex &&
+                i != _dragSourceIndex && _dragSourceIndex >= 0;
 
             return Padding(
               key: ValueKey('tile_$i'),
@@ -131,15 +144,15 @@ class _ReorderableTileGridState extends State<ReorderableTileGrid> {
                           width: tileWidth,
                           child: Opacity(
                             opacity: 0.85,
-                            child: children[i],
+                            child: _buildTileContent(context, i, children[i]),
                           ),
                         ),
                       ),
                       childWhenDragging: Opacity(
                         opacity: 0.35,
-                        child: children[i],
+                        child: _buildTileContent(context, i, children[i]),
                       ),
-                      child: children[i],
+                      child: _buildTileContent(context, i, children[i]),
                     ),
                   );
                 },
@@ -149,5 +162,21 @@ class _ReorderableTileGridState extends State<ReorderableTileGrid> {
         ),
       );
     });
+  }
+
+  /// Wraps the tile child with a drag handle if one is configured.
+  Widget _buildTileContent(BuildContext context, int index, Widget child) {
+    final builder = widget.dragHandleBuilder;
+    if (builder == null) return child;
+    return Stack(
+      children: [
+        child,
+        Positioned(
+          right: 4,
+          top: 4,
+          child: builder(context, index),
+        ),
+      ],
+    );
   }
 }
