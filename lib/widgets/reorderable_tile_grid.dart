@@ -3,9 +3,8 @@
 // A responsive tile grid that arranges children in a Wrap layout with a
 // configurable number of columns (default 2 on narrow, 4 on wide).
 //
-// Reordering: each tile has a drag handle. Drag the handle to reorder.
-// Uses LongPressDraggable + DragTarget which requires long-press to start
-// dragging; the drag handle icon provides the visual affordance.
+// Reordering: uses LongPressDraggable + DragTarget. Each tile has a drag
+// handle at the top-left corner.
 import 'package:flutter/material.dart';
 
 /// Signature for the reorder callback.
@@ -20,10 +19,7 @@ typedef DragHandleBuilder = Widget Function(BuildContext context, int index);
 /// - Narrow (< [breakpoint]): [narrowColumns] columns (default 2 for phones)
 /// - Wide   (>= [breakpoint]): [wideColumns] columns (default 4 for tablets)
 ///
-/// Reordering: long-press the drag handle on any tile to reorder. The
-/// [dragHandleBuilder] callback supplies a drag handle widget for each
-/// tile (e.g., a drag indicator icon). When omitted, the entire tile acts
-/// as the drag initiator.
+/// Reordering: long-press the drag handle on any tile to reorder.
 class ReorderableTileGrid extends StatefulWidget {
   const ReorderableTileGrid({
     super.key,
@@ -40,11 +36,7 @@ class ReorderableTileGrid extends StatefulWidget {
 
   final List<Widget> children;
   final ReorderItemCallback onReorderItem;
-
-  /// Optional per-tile drag handle widget builder. When provided, the
-  /// handle is placed at the top-right of each tile as a drag affordance.
   final DragHandleBuilder? dragHandleBuilder;
-
   final double spacing;
   final double runSpacing;
   final int narrowColumns;
@@ -57,7 +49,6 @@ class ReorderableTileGrid extends StatefulWidget {
 }
 
 class _ReorderableTileGridState extends State<ReorderableTileGrid> {
-  /// The available width from the last layout pass.
   double _containerWidth = 0;
 
   int get _columns {
@@ -65,7 +56,6 @@ class _ReorderableTileGridState extends State<ReorderableTileGrid> {
     return widget.wideColumns;
   }
 
-  // Track which tile is currently being hovered over during a drag.
   int _hoverTargetIndex = -1;
   int _dragSourceIndex = -1;
 
@@ -98,87 +88,65 @@ class _ReorderableTileGridState extends State<ReorderableTileGrid> {
               key: ValueKey('tile_$i'),
               padding: EdgeInsets.only(
                   bottom: i + columns < children.length ? runSpacing : 0),
-              child: DragTarget<int>(
-                onAcceptWithDetails: (details) {
-                  final from = details.data;
-                  final to = i;
-                  if (from != to && from >= 0 && to >= 0) {
-                    widget.onReorderItem(from, to);
-                  }
-                  setState(() {
-                    _dragSourceIndex = -1;
-                    _hoverTargetIndex = -1;
-                  });
-                },
-                onWillAcceptWithDetails: (details) {
-                  setState(() => _hoverTargetIndex = i);
-                  return true;
-                },
-                onLeave: (_) {
-                  setState(() => _hoverTargetIndex = -1);
-                },
-                builder: (context, candidateData, rejectedData) {
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    decoration: isHoverTarget
-                        ? BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                                color: cs.primary.withValues(alpha: 0.5),
-                                width: 2),
-                          )
-                        : null,
-                    width: tileWidth,
-                    child: LongPressDraggable<int>(
-                      data: i,
-                      onDragStarted: () =>
-                          setState(() => _dragSourceIndex = i),
-                      onDragEnd: (_) => setState(() {
-                        _dragSourceIndex = -1;
-                        _hoverTargetIndex = -1;
-                      }),
-                      feedback: Material(
-                        elevation: 8,
-                        borderRadius: BorderRadius.circular(16),
-                        child: SizedBox(
-                          width: tileWidth,
-                          child: Opacity(
-                            opacity: 0.85,
-                            child: _buildTileContent(context, i, children[i]),
+              child: SizedBox(
+                width: tileWidth,
+                child: DragTarget<int>(
+                  onAcceptWithDetails: (details) {
+                    final from = details.data;
+                    final to = i;
+                    if (from != to && from >= 0 && to >= 0) {
+                      widget.onReorderItem(from, to);
+                    }
+                    setState(() {
+                      _dragSourceIndex = -1;
+                      _hoverTargetIndex = -1;
+                    });
+                  },
+                  onWillAcceptWithDetails: (details) {
+                    setState(() => _hoverTargetIndex = i);
+                    return true;
+                  },
+                  onLeave: (_) {
+                    setState(() => _hoverTargetIndex = -1);
+                  },
+                  builder: (context, candidateData, rejectedData) {
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      decoration: isHoverTarget
+                          ? BoxDecoration(
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                  color: cs.primary.withValues(alpha: 0.5),
+                                  width: 2),
+                            )
+                          : null,
+                      child: LongPressDraggable<int>(
+                        data: i,
+                        onDragStarted: () =>
+                            setState(() => _dragSourceIndex = i),
+                        onDragEnd: (_) => setState(() {
+                          _dragSourceIndex = -1;
+                          _hoverTargetIndex = -1;
+                        }),
+                        feedback: Material(
+                          elevation: 8,
+                          borderRadius: BorderRadius.circular(16),
+                          child: SizedBox(
+                            width: tileWidth,
+                            child: children[i],
                           ),
                         ),
+                        childWhenDragging: children[i],
+                        child: children[i],
                       ),
-                      childWhenDragging: Opacity(
-                        opacity: 0.35,
-                        child: _buildTileContent(context, i, children[i]),
-                      ),
-                      child: _buildTileContent(context, i, children[i]),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             );
           }),
         ),
       );
     });
-  }
-
-  /// Wraps the tile child with a drag handle if one is configured.
-  Widget _buildTileContent(BuildContext context, int index, Widget child) {
-    final builder = widget.dragHandleBuilder;
-    if (builder == null) return child;
-    // The drag handle is embedded inside the tile card by wrapping the
-    // child content with a Stack that positions the handle at top-left.
-    return Stack(
-      children: [
-        child,
-        Positioned(
-          left: 0,
-          top: 0,
-          child: builder(context, index),
-        ),
-      ],
-    );
   }
 }

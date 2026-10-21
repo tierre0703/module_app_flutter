@@ -442,16 +442,13 @@ class _ScenarioTileGrid extends StatelessWidget {
       children: List.generate(scenarios.length, (i) {
         final scenario = scenarios[i];
         final isSlider = scenario.type == ScenarioType.manualSlider;
-        return Padding(
-          key: ValueKey(scenario.id),
-          padding: const EdgeInsets.only(bottom: 8),
-          child: _ScenarioTile(
-            scenario: scenario,
-            isSlider: isSlider,
-            onRun: () => onRun(scenario),
-            onSliderChanged: (v) => onSliderChanged(scenario, v),
-            onOpenSlider: () => onOpenSlider(scenario),
-          ),
+        return _ScenarioTile(
+          scenario: scenario,
+          isSlider: isSlider,
+          index: i,
+          onRun: () => onRun(scenario),
+          onSliderChanged: (v) => onSliderChanged(scenario, v),
+          onOpenSlider: () => onOpenSlider(scenario),
         );
       }),
     );
@@ -478,6 +475,7 @@ class _ScenarioTile extends StatelessWidget {
   const _ScenarioTile({
     required this.scenario,
     required this.isSlider,
+    required this.index,
     required this.onRun,
     required this.onSliderChanged,
     required this.onOpenSlider,
@@ -485,6 +483,7 @@ class _ScenarioTile extends StatelessWidget {
 
   final Scenario scenario;
   final bool isSlider;
+  final int index;
   final VoidCallback onRun;
   final ValueChanged<int> onSliderChanged;
   final VoidCallback onOpenSlider;
@@ -510,7 +509,7 @@ class _ScenarioTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         onTap: isSlider ? onOpenSlider : onRun,
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.fromLTRB(28, 10, 10, 10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
