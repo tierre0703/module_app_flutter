@@ -29,7 +29,7 @@ import '../services/room_store.dart';
 import '../services/scenario_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
-import '../widgets/reorderable_tile_grid.dart' show ReorderableTileGrid;
+import '../widgets/reorderable_tile_grid.dart';
 import 'manual_dimming_slider_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -427,13 +427,16 @@ class _ScenarioTileGrid extends StatelessWidget {
       dragHandleBuilder: (context, index) =>
           ReorderableDragStartListener(
             index: index,
-            child: Icon(
-              Icons.drag_indicator,
-              color: Theme.of(context)
-                  .colorScheme
-                  .onSurface
-                  .withValues(alpha: 0.6),
-              size: 20,
+            child: Padding(
+              padding: const EdgeInsets.all(6),
+              child: Icon(
+                Icons.drag_indicator,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.55),
+                size: 18,
+              ),
             ),
           ),
       children: List.generate(scenarios.length, (i) {

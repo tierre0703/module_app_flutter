@@ -168,12 +168,14 @@ class _ReorderableTileGridState extends State<ReorderableTileGrid> {
   Widget _buildTileContent(BuildContext context, int index, Widget child) {
     final builder = widget.dragHandleBuilder;
     if (builder == null) return child;
+    // The drag handle is embedded inside the tile card by wrapping the
+    // child content with a Stack that positions the handle at top-left.
     return Stack(
       children: [
         child,
         Positioned(
-          right: 4,
-          top: 4,
+          left: 0,
+          top: 0,
           child: builder(context, index),
         ),
       ],
