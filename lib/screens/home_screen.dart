@@ -424,31 +424,41 @@ class _ScenarioTileGrid extends StatelessWidget {
       spacing: 10,
       runSpacing: 10,
       onReorderItem: _onReorderGridScenario,
-      dragHandleBuilder: (context, index) =>
-          ReorderableDragStartListener(
-            index: index,
-            child: Padding(
-              padding: const EdgeInsets.all(6),
-              child: Icon(
-                Icons.drag_indicator,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.55),
-                size: 18,
-              ),
-            ),
-          ),
       children: List.generate(scenarios.length, (i) {
         final scenario = scenarios[i];
         final isSlider = scenario.type == ScenarioType.manualSlider;
-        return _ScenarioTile(
-          scenario: scenario,
-          isSlider: isSlider,
-          index: i,
-          onRun: () => onRun(scenario),
-          onSliderChanged: (v) => onSliderChanged(scenario, v),
-          onOpenSlider: () => onOpenSlider(scenario),
+        // Prepend a drag handle strip inside the tile card itself.
+        return Stack(
+          key: ValueKey(scenario.id),
+          children: [
+            _ScenarioTile(
+              scenario: scenario,
+              isSlider: isSlider,
+              index: i,
+              onRun: () => onRun(scenario),
+              onSliderChanged: (v) => onSliderChanged(scenario, v),
+              onOpenSlider: () => onOpenSlider(scenario),
+            ),
+            // Drag handle positioned at top-left using Positioned.
+            Positioned(
+              left: 0,
+              top: 0,
+              child: ReorderableDragStartListener(
+                index: i,
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: Icon(
+                    Icons.drag_indicator,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.55),
+                    size: 18,
+                  ),
+                ),
+              ),
+            ),
+          ],
         );
       }),
     );
@@ -509,7 +519,7 @@ class _ScenarioTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         onTap: isSlider ? onOpenSlider : onRun,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(28, 10, 10, 10),
+          padding: const EdgeInsets.all(10),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [

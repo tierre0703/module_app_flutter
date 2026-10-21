@@ -10,9 +10,6 @@ import 'package:flutter/material.dart';
 /// Signature for the reorder callback.
 typedef ReorderItemCallback = void Function(int oldIndex, int newIndex);
 
-/// Builder for a per-tile drag handle widget.
-typedef DragHandleBuilder = Widget Function(BuildContext context, int index);
-
 /// A responsive tile grid with drag-and-drop reorder support.
 ///
 /// Layout:
@@ -25,7 +22,6 @@ class ReorderableTileGrid extends StatefulWidget {
     super.key,
     required this.children,
     required this.onReorderItem,
-    this.dragHandleBuilder,
     this.spacing = 12,
     this.runSpacing = 12,
     this.narrowColumns = 2,
@@ -36,7 +32,6 @@ class ReorderableTileGrid extends StatefulWidget {
 
   final List<Widget> children;
   final ReorderItemCallback onReorderItem;
-  final DragHandleBuilder? dragHandleBuilder;
   final double spacing;
   final double runSpacing;
   final int narrowColumns;
