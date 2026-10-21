@@ -29,9 +29,8 @@ import '../services/room_store.dart';
 import '../services/scenario_store.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common_widgets.dart';
-import 'configuration_screen.dart' show openModuleDetail;
+import '../widgets/reorderable_tile_grid.dart';
 import 'manual_dimming_slider_screen.dart';
-import 'scenario_editor_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -115,25 +114,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<DeviceModule> get _overTempModules =>
       _modules.where((m) => m.isOverTemperature).toList();
-
-  /// Translates a reorder within the Home (show-in-home) filtered subset into
-  /// a move in the global persisted scenario list.
-  ///
-  /// `newIndex` follows [ReorderableListView.onReorderItem] semantics: it is
-  /// the slot (after the dragged item is removed) where it should land.
-  void _onReorderHomeScenarios(int oldIndex, int newIndex) {
-    final home = _homeScenarios;
-    if (oldIndex >= home.length) return;
-    final dragged = home[oldIndex];
-    final remaining = [...home]..removeAt(oldIndex);
-    final all = ScenarioStore.shared.scenarios;
-    int target = all.length;
-    if (newIndex < remaining.length) {
-      target = all.indexOf(remaining[newIndex]);
-      if (target < 0) target = all.length;
-    }
-    ScenarioStore.shared.move(dragged.id, target);
-  }
 
   Future<void> _runScenario(Scenario scenario) async {
     if (scenario.type == ScenarioType.manualSlider) {
@@ -365,40 +345,21 @@ class _HomeScreenState extends State<HomeScreen> {
                         message: l10n.homePinToHomeHint,
                       )
                     else
-                      ReorderableListView(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        buildDefaultDragHandles: false,
-                        onReorderItem: _onReorderHomeScenarios,
-                        children: [
-                          for (int i = 0; i < _homeScenarios.length; i++)
-                            Padding(
-                              key: ValueKey(_homeScenarios[i].id),
-                              padding: const EdgeInsets.only(
-                                  bottom: AppSpacing.betweenCards),
-                              child: _QuickScenarioCard(
-                                index: i,
-                                scenario: _homeScenarios[i],
-                                onRun: () => _runScenario(_homeScenarios[i]),
-                                onSliderChanged: (value) => setState(() {
-                                  _homeScenarios[i].sliderValue = value;
-                                  ScenarioStore.shared.commit();
-                                }),
-                                onOpenSlider: () async {
-                                  await Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                        builder: (_) =>
-                                            ManualDimmingSliderScreen(
-                                                scenario: _homeScenarios[i])),
-                                  );
-                                  await ScenarioStore.shared.commit();
-                                },
-                                onEdit: () {
-                                  // Scenario card tapping no longer opens edit screen.
-                                },
-                              ),
-                            ),
-                        ],
+                      _ScenarioTileGrid(
+                        scenarios: _homeScenarios,
+                        onRun: (s) => _runScenario(s),
+                        onSliderChanged: (s, v) {
+                          s.sliderValue = v;
+                          ScenarioStore.shared.commit();
+                        },
+                        onOpenSlider: (s) async {
+                          await Navigator.of(context).push(
+                            MaterialPageRoute(
+                                builder: (_) =>
+                                    ManualDimmingSliderScreen(scenario: s)),
+                          );
+                          await ScenarioStore.shared.commit();
+                        },
                       ),
                     const SizedBox(height: 24),
                     _SectionLabel(l10n.homeSectionTempMonitoring),
@@ -426,6 +387,146 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                   ],
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A compact tile version of the quick scenario card, designed for the
+/// responsive tile grid. It strips the drag handle and reorder affordances
+/// (the parent grid handles reorder), keeps the scenario name, room tag,
+/// action count, and the run / open-slider button, and fits in a narrower
+/// tile (half-width on phones, quarter-width on tablets).
+///
+/// The tile grid wraps these tiles in a responsive 2-column (phone) or
+/// 4-column (tablet) layout.
+class _ScenarioTileGrid extends StatelessWidget {
+  const _ScenarioTileGrid({
+    required this.scenarios,
+    required this.onRun,
+    required this.onSliderChanged,
+    required this.onOpenSlider,
+  });
+
+  final List<Scenario> scenarios;
+  final Future<void> Function(Scenario) onRun;
+  final void Function(Scenario, int) onSliderChanged;
+  final Future<void> Function(Scenario) onOpenSlider;
+
+  @override
+  Widget build(BuildContext context) {
+    return ReorderableTileGrid(
+      padding: const EdgeInsets.symmetric(horizontal: 0),
+      spacing: 10,
+      runSpacing: 10,
+      onReorderItem: _onReorderGridScenario,
+      children: List.generate(scenarios.length, (i) {
+        final scenario = scenarios[i];
+        final isSlider = scenario.type == ScenarioType.manualSlider;
+        return Padding(
+          key: ValueKey(scenario.id),
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _ScenarioTile(
+            scenario: scenario,
+            isSlider: isSlider,
+            onRun: () => onRun(scenario),
+            onSliderChanged: (v) => onSliderChanged(scenario, v),
+            onOpenSlider: () => onOpenSlider(scenario),
+          ),
+        );
+      }),
+    );
+  }
+
+  /// Translates a reorder within the Home tile grid into a move in the
+  /// global persisted scenario list.
+  void _onReorderGridScenario(int oldIndex, int newIndex) {
+    final home = scenarios;
+    if (oldIndex >= home.length) return;
+    final dragged = home[oldIndex];
+    final remaining = [...home]..removeAt(oldIndex);
+    final all = ScenarioStore.shared.scenarios;
+    int target = all.length;
+    if (newIndex < remaining.length) {
+      target = all.indexOf(remaining[newIndex]);
+      if (target < 0) target = all.length;
+    }
+    ScenarioStore.shared.move(dragged.id, target);
+  }
+}
+
+class _ScenarioTile extends StatelessWidget {
+  const _ScenarioTile({
+    required this.scenario,
+    required this.isSlider,
+    required this.onRun,
+    required this.onSliderChanged,
+    required this.onOpenSlider,
+  });
+
+  final Scenario scenario;
+  final bool isSlider;
+  final VoidCallback onRun;
+  final ValueChanged<int> onSliderChanged;
+  final VoidCallback onOpenSlider;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+
+    final Color? bg = scenario.backgroundColor;
+    final bool hasBg = bg != null;
+    final Color fg = hasBg
+        ? (ThemeData.estimateBrightnessForColor(bg) == Brightness.light
+            ? Colors.black87
+            : Colors.white)
+        : cs.onSurface;
+    final Color accent = hasBg ? fg : cs.primary;
+
+    return Card(
+      color: bg,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: isSlider ? onOpenSlider : onRun,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Icon avatar.
+              _ScenarioAvatar(icon: scenario.icon, tint: isSlider ? accent : fg),
+              const SizedBox(height: 6),
+              // Scenario name.
+              Text(
+                scenario.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: fg),
+              ),
+              const SizedBox(height: 4),
+              // Room tag.
+              _RoomTag(label: scenario.roomName, fg: fg),
+              const SizedBox(height: 4),
+              // Action count / slider label.
+              Text(
+                isSlider
+                    ? l10n.homeManualDimming
+                    : l10n.homeActionsCount(scenario.actions.length),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 11, color: fg.withValues(alpha: 0.6)),
               ),
             ],
           ),
