@@ -348,10 +348,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       _ScenarioTileGrid(
                         scenarios: _homeScenarios,
                         onRun: (s) => _runScenario(s),
-                        onSliderChanged: (s, v) {
-                          s.sliderValue = v;
-                          ScenarioStore.shared.commit();
-                        },
                         onOpenSlider: (s) async {
                           await Navigator.of(context).push(
                             MaterialPageRoute(
@@ -394,41 +390,45 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-/// A compact tile version of the quick scenario card, designed for the
-/// responsive tile grid. It strips the drag handle and reorder affordances
-/// (the parent grid handles reorder), keeps the scenario name, room tag,
-/// action count, and the run / open-slider button, and fits in a narrower
-/// tile (half-width on phones, quarter-width on tablets).
+/// A compact tile version of the quick scenario card for the responsive
+/// tile grid: icon, scenario name, room tag and a short type/actions line.
 ///
-/// The tile grid wraps these tiles in a responsive 2-column (phone) or
-/// 4-column (tablet) layout.
+/// Only the icon triggers the scenario (run or open the dimming slider);
+/// tapping the rest of the card does nothing. Reordering is handled by the
+/// grid's drag handle.
 class _ScenarioTileGrid extends StatelessWidget {
   const _ScenarioTileGrid({
     required this.scenarios,
     required this.onRun,
-    required this.onSliderChanged,
     required this.onOpenSlider,
   });
 
   final List<Scenario> scenarios;
   final Future<void> Function(Scenario) onRun;
-  final void Function(Scenario, int) onSliderChanged;
   final Future<void> Function(Scenario) onOpenSlider;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return ReorderableTileGrid(
-      padding: const EdgeInsets.symmetric(horizontal: 0),
+      padding: EdgeInsets.zero,
       spacing: 10,
       runSpacing: 10,
       onReorderItem: _onReorderGridScenario,
+      dragHandleBuilder: (context, index) => Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(
+          Icons.drag_indicator,
+          size: 18,
+          color: cs.onSurface.withValues(alpha: 0.55),
+        ),
+      ),
       children: List.generate(scenarios.length, (i) {
         final scenario = scenarios[i];
         final isSlider = scenario.type == ScenarioType.manualSlider;
         return _ScenarioTile(
           scenario: scenario,
           isSlider: isSlider,
-          index: i,
           onRun: () => onRun(scenario),
           onOpenSlider: () => onOpenSlider(scenario),
         );
@@ -457,14 +457,12 @@ class _ScenarioTile extends StatelessWidget {
   const _ScenarioTile({
     required this.scenario,
     required this.isSlider,
-    required this.index,
     required this.onRun,
     required this.onOpenSlider,
   });
 
   final Scenario scenario;
   final bool isSlider;
-  final int index;
   final VoidCallback onRun;
   final VoidCallback onOpenSlider;
 
@@ -508,7 +506,6 @@ class _ScenarioTile extends StatelessWidget {
                   fontWeight: FontWeight.w700, fontSize: 14, color: fg),
             ),
             const SizedBox(height: 4),
-            // Room tag.
             // Room tag.
             _RoomTag(label: scenario.roomName, fg: fg),
             const SizedBox(height: 4),
