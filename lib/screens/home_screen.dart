@@ -476,6 +476,7 @@ class _ScenarioTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     final Color? bg = scenario.backgroundColor;
     final bool hasBg = bg != null;
@@ -489,44 +490,45 @@ class _ScenarioTile extends StatelessWidget {
     return Card(
       color: bg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Icon avatar.
-            _ScenarioAvatar(icon: scenario.icon, tint: isSlider ? accent : fg),
-            const SizedBox(height: 6),
-            // Scenario name.
-            Text(
-              scenario.name,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: fg),
-            ),
-            const SizedBox(height: 4),
-            // Room tag row: room tag on the left, action button on the right.
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _RoomTag(label: scenario.roomName, fg: fg),
-                if (isSlider)
-                  _IconActionButton(
-                    icon: const Icon(Icons.open_in_full, size: 20),
-                    onTap: onOpenSlider,
-                    outlined: true,
-                    fg: fg,
-                    accent: accent,
-                  )
-                else
-                  _RunButton(onTap: onRun),
-              ],
-            ),
-          ],
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: isSlider ? onOpenSlider : onRun,
+        child: Padding(
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Icon avatar.
+              _ScenarioAvatar(icon: scenario.icon, tint: isSlider ? accent : fg),
+              const SizedBox(height: 6),
+              // Scenario name.
+              Text(
+                scenario.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: fg),
+              ),
+              const SizedBox(height: 4),
+              // Room tag.
+              _RoomTag(label: scenario.roomName, fg: fg),
+              const SizedBox(height: 4),
+              // Action count / slider label.
+              Text(
+                isSlider
+                    ? l10n.homeManualDimming
+                    : l10n.homeActionsCount(scenario.actions.length),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 11, color: fg.withValues(alpha: 0.6)),
+              ),
+            ],
+          ),
         ),
       ),
     );
