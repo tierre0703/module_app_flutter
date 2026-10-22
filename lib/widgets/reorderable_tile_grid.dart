@@ -79,12 +79,12 @@ class _ReorderableTileGridState extends State<ReorderableTileGrid> {
             final isHoverTarget = i == _hoverTargetIndex &&
                 i != _dragSourceIndex && _dragSourceIndex >= 0;
 
-            return Padding(
-              key: ValueKey('tile_$i'),
-              padding: EdgeInsets.only(
-                  bottom: i + columns < children.length ? runSpacing : 0),
-              child: SizedBox(
-                width: tileWidth,
+            return SizedBox(
+              width: tileWidth,
+              child: Padding(
+                key: ValueKey('tile_$i'),
+                padding: EdgeInsets.only(
+                    bottom: i + columns < children.length ? runSpacing : 0),
                 child: DragTarget<int>(
                   onAcceptWithDetails: (details) {
                     final from = details.data;
