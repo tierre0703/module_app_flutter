@@ -71,7 +71,16 @@ class _ChannelEditorScreenState extends State<ChannelEditorScreen> {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final l10n = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(widget.channel.name)),
+      appBar: AppBar(
+        title: Text(widget.channel.name),
+        actions: [
+          IconButton(
+            tooltip: l10n.save,
+            icon: const Icon(Icons.check),
+            onPressed: _save,
+          ),
+        ],
+      ),
       body: SafeArea(
         top: false,
         child: ListView(

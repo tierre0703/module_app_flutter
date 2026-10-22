@@ -340,7 +340,14 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
     return Scaffold(
       appBar: AppBar(
           title: Text(
-              _isNew ? l10n.automationNewTitle : l10n.automationEditTitle)),
+              _isNew ? l10n.automationNewTitle : l10n.automationEditTitle),
+          actions: [
+            IconButton(
+              tooltip: l10n.save,
+              icon: const Icon(Icons.check),
+              onPressed: _save,
+            ),
+          ]),
       body: SafeArea(
         top: false,
         child: ListView(

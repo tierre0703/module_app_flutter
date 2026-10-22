@@ -253,7 +253,14 @@ class _ScenarioEditorScreenState extends State<ScenarioEditorScreen> {
         return Scaffold(
           appBar: AppBar(
               title: Text(
-                  _isNew ? l10n.scenarioNewTitle : l10n.scenarioEditTitle)),
+                  _isNew ? l10n.scenarioNewTitle : l10n.scenarioEditTitle),
+              actions: [
+                IconButton(
+                  tooltip: l10n.save,
+                  icon: const Icon(Icons.check),
+                  onPressed: _save,
+                ),
+              ]),
           body: SafeArea(
             top: false,
             child: ListView(
