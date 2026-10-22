@@ -381,9 +381,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Padding(
                           padding: const EdgeInsets.only(
                               bottom: AppSpacing.betweenCards),
-                          child: _TemperatureRow(
-                              module: module,
-                              onTap: () {}),
+                          child: _TemperatureRow(module: module, onTap: () {}),
                         ),
                   ],
                 ),
@@ -432,7 +430,6 @@ class _ScenarioTileGrid extends StatelessWidget {
           isSlider: isSlider,
           index: i,
           onRun: () => onRun(scenario),
-          onSliderChanged: (v) => onSliderChanged(scenario, v),
           onOpenSlider: () => onOpenSlider(scenario),
         );
       }),
@@ -462,7 +459,6 @@ class _ScenarioTile extends StatelessWidget {
     required this.isSlider,
     required this.index,
     required this.onRun,
-    required this.onSliderChanged,
     required this.onOpenSlider,
   });
 
@@ -470,7 +466,6 @@ class _ScenarioTile extends StatelessWidget {
   final bool isSlider;
   final int index;
   final VoidCallback onRun;
-  final ValueChanged<int> onSliderChanged;
   final VoidCallback onOpenSlider;
 
   @override
@@ -490,45 +485,44 @@ class _ScenarioTile extends StatelessWidget {
     return Card(
       color: bg,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: isSlider ? onOpenSlider : onRun,
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Icon avatar.
-              _ScenarioAvatar(icon: scenario.icon, tint: isSlider ? accent : fg),
-              const SizedBox(height: 6),
-              // Scenario name.
-              Text(
-                scenario.name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: fg),
-              ),
-              const SizedBox(height: 4),
-              // Room tag.
-              _RoomTag(label: scenario.roomName, fg: fg),
-              const SizedBox(height: 4),
-              // Action count / slider label.
-              Text(
-                isSlider
-                    ? l10n.homeManualDimming
-                    : l10n.homeActionsCount(scenario.actions.length),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 11, color: fg.withValues(alpha: 0.6)),
-              ),
-            ],
-          ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Icon avatar - tappable to run/open slider.
+            InkWell(
+              borderRadius: BorderRadius.circular(22),
+              onTap: isSlider ? onOpenSlider : onRun,
+              child: _ScenarioAvatar(
+                  icon: scenario.icon, tint: isSlider ? accent : fg),
+            ),
+            const SizedBox(height: 6),
+            // Scenario name.
+            Text(
+              scenario.name,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  fontWeight: FontWeight.w700, fontSize: 14, color: fg),
+            ),
+            const SizedBox(height: 4),
+            // Room tag.
+            // Room tag.
+            _RoomTag(label: scenario.roomName, fg: fg),
+            const SizedBox(height: 4),
+            // Action count / slider label.
+            Text(
+              isSlider
+                  ? l10n.homeManualDimming
+                  : l10n.homeActionsCount(scenario.actions.length),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: fg.withValues(alpha: 0.6)),
+            ),
+          ],
         ),
       ),
     );
