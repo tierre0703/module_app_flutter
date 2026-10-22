@@ -3,20 +3,11 @@
 // A responsive tile grid that arranges children in a Wrap layout with a
 // configurable number of columns (default 2 on narrow, 4 on wide).
 //
-// Reordering: uses LongPressDraggable + DragTarget. Each tile has a drag
-// handle at the top-left corner.
+// Reordering: uses LongPressDraggable + DragTarget.
 import 'package:flutter/material.dart';
 
-/// Signature for the reorder callback.
 typedef ReorderItemCallback = void Function(int oldIndex, int newIndex);
 
-/// A responsive tile grid with drag-and-drop reorder support.
-///
-/// Layout:
-/// - Narrow (< [breakpoint]): [narrowColumns] columns (default 2 for phones)
-/// - Wide   (>= [breakpoint]): [wideColumns] columns (default 4 for tablets)
-///
-/// Reordering: long-press the drag handle on any tile to reorder.
 class ReorderableTileGrid extends StatefulWidget {
   const ReorderableTileGrid({
     super.key,
@@ -79,12 +70,12 @@ class _ReorderableTileGridState extends State<ReorderableTileGrid> {
             final isHoverTarget = i == _hoverTargetIndex &&
                 i != _dragSourceIndex && _dragSourceIndex >= 0;
 
-            return SizedBox(
-              width: tileWidth,
-              child: Padding(
-                key: ValueKey('tile_$i'),
-                padding: EdgeInsets.only(
-                    bottom: i + columns < children.length ? runSpacing : 0),
+            return Padding(
+              key: ValueKey('tile_$i'),
+              padding: EdgeInsets.only(
+                  bottom: i + columns < children.length ? runSpacing : 0),
+              child: SizedBox(
+                width: tileWidth,
                 child: DragTarget<int>(
                   onAcceptWithDetails: (details) {
                     final from = details.data;
@@ -105,36 +96,43 @@ class _ReorderableTileGridState extends State<ReorderableTileGrid> {
                     setState(() => _hoverTargetIndex = -1);
                   },
                   builder: (context, candidateData, rejectedData) {
-                    return AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      decoration: isHoverTarget
-                          ? BoxDecoration(
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                  color: cs.primary.withValues(alpha: 0.5),
-                                  width: 2),
-                            )
-                          : null,
-                      child: LongPressDraggable<int>(
-                        data: i,
-                        onDragStarted: () =>
-                            setState(() => _dragSourceIndex = i),
-                        onDragEnd: (_) => setState(() {
-                          _dragSourceIndex = -1;
-                          _hoverTargetIndex = -1;
-                        }),
-                        feedback: Material(
-                          elevation: 8,
-                          borderRadius: BorderRadius.circular(16),
-                          child: SizedBox(
+                    final tile = SizedBox(
+                      width: tileWidth,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        decoration: isHoverTarget
+                            ? BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(
+                                    color: cs.primary.withValues(alpha: 0.5),
+                                    width: 2),
+                              )
+                            : null,
+                        child: LongPressDraggable<int>(
+                          data: i,
+                          onDragStarted: () =>
+                              setState(() => _dragSourceIndex = i),
+                          onDragEnd: (_) => setState(() {
+                            _dragSourceIndex = -1;
+                            _hoverTargetIndex = -1;
+                          }),
+                          feedback: SizedBox(
                             width: tileWidth,
-                            child: children[i],
+                            child: Material(
+                              elevation: 8,
+                              borderRadius: BorderRadius.circular(16),
+                              child: SizedBox(
+                                width: tileWidth,
+                                child: children[i],
+                              ),
+                            ),
                           ),
+                          childWhenDragging: children[i],
+                          child: children[i],
                         ),
-                        childWhenDragging: children[i],
-                        child: children[i],
                       ),
                     );
+                    return tile;
                   },
                 ),
               ),
