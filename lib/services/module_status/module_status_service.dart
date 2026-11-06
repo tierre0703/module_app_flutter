@@ -398,7 +398,12 @@ class ModuleStatusService {
       timeout: const Duration(seconds: 5),
     );
     final protocol = HubJsonProtocol(connection);
+    // Wire the connection's data stream into the protocol ourselves - the
+    // same wiring the hub control screen does for its own client. Without
+    // it, responses are never parsed and every command times out.
+    StreamSubscription<String>? pump;
     try {
+      pump = connection.dataStream.listen(protocol.feed);
       await connection.connect();
       if (!connection.isConnected) return false;
       if (modbusBank && pulse) {
@@ -420,6 +425,7 @@ class ModuleStatusService {
           'ModuleStatusService: hub command on $moduleId failed: $e\n$st');
       return false;
     } finally {
+      await pump?.cancel();
       protocol.dispose();
     }
   }
