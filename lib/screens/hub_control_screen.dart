@@ -139,9 +139,9 @@ class _HubControlScreenState extends State<HubControlScreen> {
     );
     _hubClient = HubJsonProtocol(connection);
 
-    connection.dataStream.listen((chunk) {
-      _hubClient!.feed(chunk);
-    });
+    // The protocol wires the connection's data stream itself in connect();
+    // no manual feed wiring here (a duplicate subscription would parse every
+    // chunk twice).
 
     // Subscribe to Hub async device events for real-time state updates.
     _eventSubscription?.cancel();

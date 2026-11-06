@@ -233,6 +233,12 @@ class _ParseResult {
 class HubJsonProtocol {
   final ModuleTcpConnection _connection;
 
+  /// Subscription driving incoming chunks into [feed]. Wired by [connect] so
+  /// every caller (hub control screen, dashboard probe, scenario dispatch)
+  /// gets a live protocol without wiring the stream by hand - an unwired
+  /// protocol makes every command time out because responses are never parsed.
+  StreamSubscription<String>? _dataSubscription;
+
   bool _greetingReceived = false;
   final Map<int, Completer<HubCommandResponse>> _pending = {};
   int _nextId = 1;
@@ -255,7 +261,14 @@ class HubJsonProtocol {
   HubJsonProtocol(this._connection);
 
   /// Connects to the Hub.
-  Future<void> connect() => _connection.connect();
+  ///
+  /// Subscribes the protocol to the connection's data stream first so that the
+  /// greeting and every response (identical chunks) are parsed as they arrive.
+  Future<void> connect() {
+    _dataSubscription?.cancel();
+    _dataSubscription = _connection.dataStream.listen(feed);
+    return _connection.connect();
+  }
 
   /// Whether the underlying TCP session is live.
   bool get isConnected => _connection.isConnected;
@@ -266,6 +279,7 @@ class HubJsonProtocol {
   /// Disposes of the connection.
   void dispose() {
     _timeoutTimer?.cancel();
+    _dataSubscription?.cancel();
     _eventController.close();
     _connection.dispose();
   }
