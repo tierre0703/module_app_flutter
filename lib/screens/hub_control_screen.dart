@@ -590,7 +590,6 @@ class _HubOutputRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = output.state;
     final turnOffDisabled = output.turnOffDisable;
-    final pulseDisabled = turnOffDisabled || output.restartDisable;
 
     return Card(
       child: Padding(
@@ -634,7 +633,7 @@ class _HubOutputRow extends StatelessWidget {
                       ),
                       const SizedBox(width: 8),
                       OutlinedButton(
-                        onPressed: pulseDisabled ? null : onPulse,
+                        onPressed: turnOffDisabled ? null : onPulse,
                         child: const Text('Pulse'),
                       ),
                     ],
