@@ -114,6 +114,14 @@ class ScenarioRunner {
     }
 
     final service = ModuleStatusService.shared;
+
+    // Hub output actions are dispatched through the Hub's own protocol-1
+    // command set on a short-lived connection; the Control API facade does not
+    // cover hubs, so this branch runs before the facade reachability check.
+    if (action.isHubAction) {
+      return _runHubAction(description, action, module, service);
+    }
+
     final protocol = service.commandProtocolFor(module.id);
     if (protocol == null || !protocol.isConnected) {
       return ScenarioActionResult(
@@ -151,6 +159,70 @@ class ScenarioRunner {
         detail: 'Command failed on ${module.name}: $e',
       );
     }
+  }
+
+  /// Runs a Hub output action: ON/OFF or Pulse, against the Hub's normal
+  /// output bank or its Modbus Power bank (selected by
+  /// [ScenarioAction.hubOutputBank]). Dispatch goes through
+  /// [ModuleStatusService.sendHubOutputCommand] on a short-lived connection,
+  /// so an unreachable Hub is simply reported as a failed action.
+  Future<ScenarioActionResult> _runHubAction(
+    String description,
+    ScenarioAction action,
+    DeviceModule module,
+    ModuleStatusService service,
+  ) async {
+    final bankChannel = _hubBankChannelIndex(module, action);
+    if (bankChannel < 0) {
+      return ScenarioActionResult(
+        description: description,
+        success: false,
+        detail: 'Output "${action.channelName}" not found on ${module.name}',
+      );
+    }
+    try {
+      final bool ok = await service.sendHubOutputCommand(
+        module.id,
+        modbusBank: action.hubOutputBank == HubOutputBank.modbusPower,
+        bankChannel: bankChannel,
+        on: action.turnOn,
+        pulse: action.hubActionPulse,
+      );
+      return ScenarioActionResult(
+        description: description,
+        success: ok,
+        detail:
+            ok ? 'ACK on ${action.channelName}' : 'Command rejected by ${module.name}',
+      );
+    } catch (e, st) {
+      debugPrint('ScenarioRunner: hub action "$description" failed: $e\n$st');
+      return ScenarioActionResult(
+        description: description,
+        success: false,
+        detail: 'Command failed on ${module.name}: $e',
+      );
+    }
+  }
+
+  /// Resolves the Hub channel for an action by counting bank members up to the
+  /// saved [ScenarioAction.channelIndex]: the channels list stores the normal
+  /// outputs and Modbus Power outputs concatenated, while Hub commands take a
+  /// 1-based channel within the target bank.
+  int _hubBankChannelIndex(DeviceModule module, ScenarioAction action) {
+    final channels = module.channels;
+    if (action.channelIndex < 0 || action.channelIndex >= channels.length) {
+      return -1;
+    }
+    final bool wantModbus =
+        action.hubOutputBank == HubOutputBank.modbusPower;
+    if (channels[action.channelIndex].isModbusPower != wantModbus) {
+      return -1;
+    }
+    int bankIndex = 0;
+    for (int i = 0; i < action.channelIndex; i++) {
+      if (channels[i].isModbusPower == wantModbus) bankIndex++;
+    }
+    return bankIndex + 1;
   }
 
   /// Runs an input action: drives the module's virtual input ON, OFF or with a

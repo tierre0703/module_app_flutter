@@ -319,7 +319,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
     try {
       await client.pulseOutput(channel);
       _showToast('$name: pulse sent');
-      await Future.delayed(const Duration(seconds: 1500));
+      await Future.delayed(const Duration(milliseconds: 1500));
       await _fetchDashboard();
       if (mounted) setState(() {});
     } catch (e, st) {
@@ -362,7 +362,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
     try {
       await client.restartModbusOutput(channel);
       _showToast('$name: restart sent');
-      await Future.delayed(const Duration(seconds: 2000));
+      await Future.delayed(const Duration(milliseconds: 2000));
       await _fetchDashboard();
       if (mounted) setState(() {});
     } catch (e, st) {

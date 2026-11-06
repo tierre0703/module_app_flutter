@@ -366,6 +366,64 @@ class ModuleStatusService {
     }
   }
 
+  /// Sends one Hub output command (protocol 1) for scenario dispatches.
+  ///
+  /// The Hub has no persistent command unit (it speaks its own protocol 1, not
+  /// the Control API catalogue), so a short-lived connection is opened per
+  /// command - mirroring [_probeHub] and the hub control screen.
+  ///
+  /// [bankChannel] is the **1-based** channel within the target bank: the
+  /// normal output bank uses `set_output` / `pulse_output`, the Modbus Power
+  /// bank uses `set_modbus_output`. The Modbus bank has no native pulse
+  /// command, so a pulse there turns the output on and off again after one
+  /// second (both steps must succeed).
+  Future<bool> sendHubOutputCommand(
+    String moduleId, {
+    required bool modbusBank,
+    required int bankChannel,
+    required bool on,
+    bool pulse = false,
+  }) async {
+    DeviceModule? live;
+    for (final m in store.modules) {
+      if (m.id == moduleId) {
+        live = m;
+        break;
+      }
+    }
+    if (live == null) return false;
+    final connection = ModuleTcpConnection(
+      host: live.host,
+      port: live.controlApiPort,
+      timeout: const Duration(seconds: 5),
+    );
+    final protocol = HubJsonProtocol(connection);
+    try {
+      await connection.connect();
+      if (!connection.isConnected) return false;
+      if (modbusBank && pulse) {
+        final onResp = await protocol.setModbusOutput(bankChannel, true);
+        if (!onResp.ok) return false;
+        await Future<void>.delayed(const Duration(seconds: 1));
+        final offResp = await protocol.setModbusOutput(bankChannel, false);
+        return offResp.ok;
+      }
+      final response = switch ((modbusBank, pulse)) {
+        (false, true) => await protocol.pulseOutput(bankChannel),
+        (false, false) => await protocol.setOutput(bankChannel, on),
+        (true, false) => await protocol.setModbusOutput(bankChannel, on),
+        (true, true) => null, // handled above
+      };
+      return response?.ok ?? false;
+    } catch (e, st) {
+      debugPrint(
+          'ModuleStatusService: hub command on $moduleId failed: $e\n$st');
+      return false;
+    } finally {
+      protocol.dispose();
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Dimmer control catalogue facade (Control API spec §6). These commands are
   // Control-API-only: they need the live [SoleuxControlApiService] unit and

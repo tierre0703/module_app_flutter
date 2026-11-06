@@ -46,6 +46,34 @@ void main() {
   }
 
   group('ScenarioRunner', () {
+    // Injects a hub with both output banks into the shared store.
+    Future<void> seedHubFleet() async {
+      await ModuleStore.shared.init();
+      await ModuleStore.shared.replaceAll([
+        DeviceModule(
+          id: 'hub1',
+          name: 'Modbus Hub',
+          type: ModuleType.hub,
+          ipAddress: '192.168.1.10',
+          status: ConnectionStatus.offline,
+          roomName: 'Engine Room',
+          internalTempC: 30,
+          channels: [
+            ChannelOutput(
+                id: 'hub1h0',
+                name: 'Server',
+                icon: Icons.electrical_services,
+                isModbusPower: false),
+            ChannelOutput(
+                id: 'hub1h1',
+                name: 'Bilge Pump',
+                icon: Icons.electrical_services,
+                isModbusPower: true),
+          ],
+        ),
+      ]);
+    }
+
     test('flags an unknown module as a failed action', () async {
       final runner = ScenarioRunner.shared;
       final result = await runner.run(Scenario(
@@ -96,6 +124,69 @@ void main() {
       // Not connected (no live socket in tests) => reported as failed.
       expect(result.actions.first.success, isFalse);
       expect(result.actions.first.detail, contains('not connected'));
+    });
+
+    test('flags a bank-mismatched hub action as a failed action', () async {
+      await seedHubFleet();
+      final runner = ScenarioRunner.shared;
+
+      // The action claims the Modbus Power bank but targets channel index 0,
+      // which is a normal output - the runner must not dispatch it.
+      final result = await runner.run(Scenario(
+        id: 's1h',
+        name: 'Test Hub',
+        icon: Icons.play_arrow,
+        type: ScenarioType.tapToRun,
+        actions: [
+          ScenarioAction(
+            moduleName: 'Modbus Hub',
+            channelName: 'Server',
+            icon: Icons.electrical_services,
+            isDimmerAction: false,
+            turnOn: true,
+            isHubAction: true,
+            hubOutputBank: HubOutputBank.modbusPower,
+          ),
+        ],
+      ));
+
+      expect(result.actions, hasLength(1));
+      expect(result.actions.first.success, isFalse);
+      expect(result.actions.first.detail, contains('not found'));
+      expect(result.failed, 1);
+    });
+
+    test('flags a hub action on an absent bank channel as failed', () async {
+      await seedHubFleet();
+      final runner = ScenarioRunner.shared;
+
+      // channelIndex 1 ('Bilge Pump') is a Modbus Power channel, but the
+      // action targets the normal bank - the stored index does not resolve
+      // within that bank, so the action fails without dialing the device.
+      final result = await runner.run(Scenario(
+        id: 's2h',
+        name: 'Test Hub',
+        icon: Icons.play_arrow,
+        type: ScenarioType.tapToRun,
+        actions: [
+          ScenarioAction(
+            moduleName: 'Modbus Hub',
+            channelName: 'Bilge Pump',
+            moduleIndex: -1,
+            channelIndex: 1,
+            icon: Icons.electrical_services,
+            isDimmerAction: false,
+            turnOn: true,
+            isHubAction: true,
+            hubOutputBank: HubOutputBank.normal,
+          ),
+        ],
+      ));
+
+      expect(result.actions, hasLength(1));
+      expect(result.actions.first.success, isFalse);
+      expect(result.actions.first.detail, contains('not found'));
+      expect(result.failed, 1);
     });
 
     test('resolves an input action by input name', () async {
