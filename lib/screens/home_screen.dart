@@ -490,10 +490,12 @@ class _ScenarioTile extends StatelessWidget {
           children: [
             // Icon avatar - tappable to run/open slider.
             InkWell(
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(33),
               onTap: isSlider ? onOpenSlider : onRun,
               child: _ScenarioAvatar(
-                  icon: scenario.icon, tint: isSlider ? accent : fg),
+                  icon: scenario.icon,
+                  tint: isSlider ? accent : fg,
+                  scale: 1.5),
             ),
             const SizedBox(height: 6),
             // Scenario name.
@@ -980,16 +982,20 @@ class _QuickScenarioCardState extends State<_QuickScenarioCard> {
 /// Scenario icon avatar; slider icons get a mint halo echoing the reference's
 /// primary-glow wash.
 class _ScenarioAvatar extends StatelessWidget {
-  const _ScenarioAvatar({required this.icon, required this.tint});
+  const _ScenarioAvatar(
+      {required this.icon, required this.tint, this.scale = 1.0});
 
   final IconData icon;
   final Color tint;
 
+  /// Multiplies the avatar circle and icon glyph (e.g. 1.5x in tiles).
+  final double scale;
+
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 44,
-      height: 44,
+      width: 44 * scale,
+      height: 44 * scale,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: tint.withValues(alpha: 0.12),
@@ -998,7 +1004,7 @@ class _ScenarioAvatar extends StatelessWidget {
           BoxShadow(color: tint.withValues(alpha: 0.18), blurRadius: 12)
         ],
       ),
-      child: Icon(icon, color: tint, size: 22),
+      child: Icon(icon, color: tint, size: 22 * scale),
     );
   }
 }
