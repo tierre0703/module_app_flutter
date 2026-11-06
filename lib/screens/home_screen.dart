@@ -908,7 +908,7 @@ class _QuickScenarioCardState extends State<_QuickScenarioCard> {
                   const SizedBox(width: 8),
                   if (isSlider)
                     _IconActionButton(
-                      icon: const Icon(Icons.open_in_full, size: 20),
+                      icon: const Icon(Icons.open_in_full, size: 20 * 1.5),
                       onTap: widget.onOpenSlider,
                       outlined: true,
                       fg: fg,
@@ -1051,12 +1051,13 @@ class _RunButton extends StatelessWidget {
           shape: BoxShape.circle,
           gradient: LinearGradient(colors: [cs.primary, cs.primary]),
         ),
-        width: 52,
-        height: 52,
+        width: 52 * 1.5,
+        height: 52 * 1.5,
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
-          child: Icon(Icons.play_arrow_rounded, color: cs.onPrimary, size: 30),
+          child: Icon(Icons.play_arrow_rounded,
+              color: cs.onPrimary, size: 30 * 1.5),
         ),
       ),
     );
@@ -1099,14 +1100,14 @@ class _IconActionButton extends StatelessWidget {
               ? null
               : LinearGradient(colors: [buttonAccent, buttonAccent]),
         ),
-        width: 48,
-        height: 48,
+        width: 48 * 1.5,
+        height: 48 * 1.5,
         child: InkWell(
           customBorder: const CircleBorder(),
           onTap: onTap,
           child: Center(
               child: outlined
-                  ? Icon(Icons.open_in_full, color: buttonFg, size: 20)
+                  ? Icon(Icons.open_in_full, color: buttonFg, size: 20 * 1.5)
                   : icon),
         ),
       ),
