@@ -237,6 +237,10 @@ class _ScenarioCard extends StatelessWidget {
                   const SizedBox(width: 4),
                   IconButton.outlined(
                       onPressed: onRun,
+                      // 1.3x the default icon button (24 icon on 48 target).
+                      iconSize: 24 * 1.3,
+                      constraints: const BoxConstraints(
+                          minWidth: 48 * 1.3, minHeight: 48 * 1.3),
                       icon: Icon(
                           isSlider ? Icons.open_in_full : Icons.play_arrow)),
                   PopupMenuButton<String>(
