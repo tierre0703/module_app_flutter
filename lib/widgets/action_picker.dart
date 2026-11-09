@@ -54,6 +54,10 @@ Future<ScenarioAction?> showAddActionSheet(
   InputActionState inputState = initial?.inputState ?? InputActionState.on;
   HubOutputBank hubOutputBank = initial?.hubOutputBank ?? HubOutputBank.normal;
   bool hubActionPulse = initial?.hubActionPulse ?? false;
+  // Hub Variables target: the picked `vio` virtual tag (by index into the
+  // module's cached [DeviceModule.virtualTags]) and the value to write.
+  int tagIndex = -1;
+  String tagValue = '';
   // Track whether the initial action is hub-based so we can branch
   // before module is resolved.
   final bool initialIsHubAction = initial?.isHubAction ?? false;
@@ -92,9 +96,19 @@ Future<ScenarioAction?> showAddActionSheet(
           selectModule(outputModules.first);
           channelIndex = _resolveChannelIndex(m, initial);
         }
+        if (initial.hubOutputBank == HubOutputBank.variables) {
+          // Variables target: no channel is involved; wire the vio tag by
+          // its stored name (unknown names fall back to the first tag).
+          channelIndex = -1;
+          if (initial.hubVariableTag.isNotEmpty) {
+            tagIndex = m.virtualTags
+                .indexWhere((t) => t.tagName == initial.hubVariableTag);
+          }
+        }
       }
       hubOutputBank = initial.hubOutputBank;
       hubActionPulse = initial.hubActionPulse;
+      tagValue = initial.hubVariableValue;
     } else {
       if (module != null) {
         final m = module!;
@@ -127,6 +141,8 @@ Future<ScenarioAction?> showAddActionSheet(
           final bool isDimmerModule = module?.type == ModuleType.dimmerDc ||
               module?.type == ModuleType.dimmerAc;
           final bool isHubModule = module?.type == ModuleType.hub;
+          final bool isHubVariableTarget =
+              isHubModule && hubOutputBank == HubOutputBank.variables;
 
           void switchTarget(bool toInput) {
             setSheetState(() {
@@ -171,6 +187,72 @@ Future<ScenarioAction?> showAddActionSheet(
 
           final l10n = AppLocalizations.of(context);
 
+          /// Whether the save button can produce a valid action.
+          bool canSave() {
+            final m = module;
+            if (m == null) return false;
+            if (isHubVariableTarget) {
+              return tagIndex >= 0 && tagIndex < m.virtualTags.length;
+            }
+            if (isInputTarget) {
+              return inputIndex >= 0 && inputIndex < m.inputs.length;
+            }
+            return channelIndex >= 0 && channelIndex < m.channels.length;
+          }
+
+          /// Builds the action the user just configured, or null when the
+          /// selection is incomplete (see [canSave]).
+          ScenarioAction? buildAction() {
+            final m = module;
+            if (m == null) return null;
+            if (isHubVariableTarget) {
+              if (tagIndex < 0 || tagIndex >= m.virtualTags.length) return null;
+              final tag = m.virtualTags[tagIndex];
+              return ScenarioAction(
+                moduleName: m.name,
+                moduleIndex: moduleIndex,
+                channelName: _virtualTagLabel(tag),
+                channelIndex: -1,
+                icon: Icons.tune,
+                isDimmerAction: false,
+                turnOn: true,
+                brightnessPct: brightness,
+                isInputAction: false,
+                inputName: '',
+                inputIndex: -1,
+                inputState: InputActionState.on,
+                isHubAction: true,
+                hubOutputBank: HubOutputBank.variables,
+                hubActionPulse: false,
+                hubVariableTag: tag.tagName,
+                hubVariableValue: tagValue,
+              );
+            }
+            if (isInputTarget) {
+              if (inputIndex < 0 || inputIndex >= m.inputs.length) return null;
+            } else if (channelIndex < 0 ||
+                channelIndex >= m.channels.length) {
+              return null;
+            }
+            return ScenarioAction(
+              moduleName: m.name,
+              moduleIndex: moduleIndex,
+              channelName: m.channels[channelIndex].name,
+              channelIndex: channelIndex,
+              icon: m.channels[channelIndex].icon,
+              isDimmerAction: false,
+              turnOn: turnOn,
+              brightnessPct: brightness,
+              isInputAction: false,
+              inputName: '',
+              inputIndex: -1,
+              inputState: InputActionState.on,
+              isHubAction: isHubModule,
+              hubOutputBank: hubOutputBank,
+              hubActionPulse: hubActionPulse,
+            );
+          }
+
           return SafeArea(
             child: Padding(
               padding: EdgeInsets.only(
@@ -202,6 +284,9 @@ Future<ScenarioAction?> showAddActionSheet(
                       ],
                       onChanged: (m) => setSheetState(() {
                         selectModule(m);
+                        // The cached vio tags belong to the freshly chosen
+                        // module: drop any previously picked variable.
+                        tagIndex = -1;
                         if (isInputTarget) {
                           inputIndex = _firstEnabledInputIndex(m);
                           // Dimmer inputs only support Pulse.
@@ -220,55 +305,110 @@ Future<ScenarioAction?> showAddActionSheet(
                         style: Theme.of(context).textTheme.bodyLarge),
                     const SizedBox(height: 8),
                     if (isHubModule) ...[
-                      // Hub modules: choose between normal Output and
-                      // Modbus Power output bank instead of Output vs Input.
+                      // Hub modules: choose between the normal Output bank,
+                      // the Modbus Power output bank, and the hub's `vio`
+                      // virtual-tag Variables instead of Output vs Input.
                       SegmentedButton<HubOutputBank>(
-                        segments: [
+                        segments: const [
                           ButtonSegment(
                             value: HubOutputBank.normal,
                             label: Text('Output'),
-                            icon: const Icon(Icons.output_outlined),
+                            icon: Icon(Icons.output_outlined),
                           ),
                           ButtonSegment(
                             value: HubOutputBank.modbusPower,
-                            label: Text('Modbus'),
-                            icon: const Icon(Icons.electrical_services),
+                            label: Text('Modbus Output'),
+                            icon: Icon(Icons.electrical_services),
+                          ),
+                          ButtonSegment(
+                            value: HubOutputBank.variables,
+                            label: Text('Variables'),
+                            icon: Icon(Icons.tune),
                           ),
                         ],
                         selected: {hubOutputBank},
-                        onSelectionChanged: (s) => setSheetState(()
-                            => hubOutputBank = s.first),
+                        onSelectionChanged: (s) => setSheetState(() {
+                          hubOutputBank = s.first;
+                          // Switching away from Variables lets the output
+                          // dropdown below re-resolve; switching to drops
+                          // the channel.
+                          if (s.first == HubOutputBank.variables) {
+                            channelIndex = -1;
+                          } else {
+                            tagIndex = -1;
+                          }
+                        }),
                       ),
                       const SizedBox(height: 12),
-                      () {
-                        final m = module;
-                        if (m == null) return Text(l10n.actionPickerNoOutputs);
-                        final filtered = <int>[
-                          for (var c = 0; c < m.channels.length; c++)
-                            if (hubOutputBank == HubOutputBank.modbusPower
-                                ? m.channels[c].isModbusPower
-                                : !m.channels[c].isModbusPower)
-                              c,
-                        ];
-                        if (filtered.isEmpty)
-                          return Text(l10n.actionPickerNoOutputs);
-                        if (channelIndex < 0 || !filtered.contains(channelIndex)) {
-                          channelIndex = filtered.first;
-                        }
-                        return DropdownButtonFormField<int>(
-                          initialValue: channelIndex,
-                          decoration: InputDecoration(
-                              labelText: l10n.actionPickerOutputLabel),
-                          items: [
-                            for (final c in filtered)
-                              DropdownMenuItem(
-                                  value: c,
-                                  child: Text(m.channels[c].name)),
-                          ],
-                          onChanged: (v) => setSheetState(
-                              () => channelIndex = v ?? channelIndex),
-                        );
-                      }(),
+                      if (hubOutputBank == HubOutputBank.variables) ...[
+                        // Variables target: pick one of the hub's cached vio
+                        // virtual tags plus the value to write (no output and
+                        // no ON/OFF/Pulse state applies).
+                        () {
+                          final m = module;
+                          if (m == null) return Text(l10n.actionPickerNoOutputs);
+                          if (m.virtualTags.isEmpty) {
+                            return Text(
+                                'No variables cached for ${m.name}. Open its '
+                                'control screen and refresh to load the vio '
+                                'tags.');
+                          }
+                          if (tagIndex < 0 || tagIndex >= m.virtualTags.length) {
+                            tagIndex = 0;
+                          }
+                          return DropdownButtonFormField<int>(
+                            initialValue: tagIndex,
+                            decoration: const InputDecoration(
+                                labelText: 'Variable'),
+                            items: [
+                              for (var t = 0; t < m.virtualTags.length; t++)
+                                DropdownMenuItem(
+                                    value: t,
+                                    child: Text(
+                                        _virtualTagLabel(m.virtualTags[t]))),
+                            ],
+                            onChanged: (v) => setSheetState(
+                                () => tagIndex = v ?? tagIndex),
+                          );
+                        }(),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          initialValue: tagValue,
+                          decoration:
+                              const InputDecoration(labelText: 'Value'),
+                          onChanged: (v) => tagValue = v,
+                        ),
+                      ] else
+                        () {
+                          final m = module;
+                          if (m == null) return Text(l10n.actionPickerNoOutputs);
+                          final filtered = <int>[
+                            for (var c = 0; c < m.channels.length; c++)
+                              if (hubOutputBank == HubOutputBank.modbusPower
+                                  ? m.channels[c].isModbusPower
+                                  : !m.channels[c].isModbusPower)
+                                c,
+                          ];
+                          if (filtered.isEmpty) {
+                            return Text(l10n.actionPickerNoOutputs);
+                          }
+                          if (channelIndex < 0 || !filtered.contains(channelIndex)) {
+                            channelIndex = filtered.first;
+                          }
+                          return DropdownButtonFormField<int>(
+                            initialValue: channelIndex,
+                            decoration: InputDecoration(
+                                labelText: l10n.actionPickerOutputLabel),
+                            items: [
+                              for (final c in filtered)
+                                DropdownMenuItem(
+                                    value: c,
+                                    child: Text(m.channels[c].name)),
+                            ],
+                            onChanged: (v) => setSheetState(
+                                () => channelIndex = v ?? channelIndex),
+                          );
+                        }(),
                     ] else ...[
                       SegmentedButton<bool>(
                         segments: [
@@ -352,7 +492,8 @@ Future<ScenarioAction?> showAddActionSheet(
                         onSelectionChanged: (s) =>
                             setSheetState(() => inputState = s.first),
                       ),
-                    ] else if (isHubModule) ...[
+                    ] else if (isHubModule &&
+                        hubOutputBank != HubOutputBank.variables) ...[
                       Text(l10n.actionPickerState,
                           style: Theme.of(context).textTheme.bodyLarge),
                       const SizedBox(height: 8),
@@ -406,33 +547,12 @@ Future<ScenarioAction?> showAddActionSheet(
                     ],
                     const SizedBox(height: 20),
                     FilledButton(
-                      onPressed: module == null ||
-                              (isInputTarget
-                                  ? inputIndex < 0 ||
-                                      inputIndex >= module!.inputs.length
-                                  : channelIndex < 0 ||
-                                      channelIndex >= module!.channels.length)
-                          ? null
-                          : () => Navigator.pop(
-                                context,
-                                ScenarioAction(
-                                  moduleName: module!.name,
-                                  moduleIndex: moduleIndex,
-                                  channelName: module!.channels[channelIndex].name,
-                                  channelIndex: channelIndex,
-                                  icon: module!.channels[channelIndex].icon,
-                                  isDimmerAction: false,
-                                  turnOn: turnOn,
-                                  brightnessPct: brightness,
-                                  isInputAction: false,
-                                  inputName: '',
-                                  inputIndex: -1,
-                                  inputState: InputActionState.on,
-                                  isHubAction: isHubModule,
-                                  hubOutputBank: hubOutputBank,
-                                  hubActionPulse: hubActionPulse,
-                                ),
-                              ),
+                      onPressed: canSave()
+                          ? () {
+                              final action = buildAction();
+                              if (action != null) Navigator.pop(context, action);
+                            }
+                          : null,
                       child: Text(isEditing
                           ? l10n.actionPickerSave
                           : l10n.actionPickerAdd),
@@ -492,6 +612,12 @@ List<PhysicalInput> _enabledInputs(List<PhysicalInput>? inputs) => [
       for (final i in inputs ?? const <PhysicalInput>[])
         if (i.enabled) i,
     ];
+
+/// Display label for a Hub virtual tag (Variables dropdown and action
+/// summary): the human-readable tag label when reported, otherwise the
+/// stored tag name.
+String _virtualTagLabel(HubVirtualTag tag) =>
+    (tag.name != null && tag.name!.isNotEmpty) ? tag.name! : tag.tagName;
 
 DeviceModule? _matchModule(List<DeviceModule> modules, String name) {
   for (final m in modules) {

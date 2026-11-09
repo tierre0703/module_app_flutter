@@ -59,4 +59,34 @@ void main() {
     expect(fetched.actions.single.moduleName, 'Relay A');
     expect(fetched.showInHome, isTrue);
   });
+
+  test('hub variable action round-trips through storage', () async {
+    final action = ScenarioAction(
+      moduleName: 'Modbus Hub',
+      channelName: 'All_Lights_Off',
+      icon: Icons.tune,
+      isDimmerAction: false,
+      turnOn: true,
+      isHubAction: true,
+      hubOutputBank: HubOutputBank.variables,
+      hubVariableTag: 'All_Lights_Off',
+      hubVariableValue: '1',
+    );
+    expect(action.summary, 'All_Lights_Off -> 1');
+    await repo().then((r) => r.saveAll([
+          Scenario(
+            id: 's1',
+            name: 'All Lights Off',
+            icon: Icons.play_arrow,
+            type: ScenarioType.tapToRun,
+            actions: [action],
+          ),
+        ]));
+    final fetched = (await repo()).fetch().single.actions.single;
+    expect(fetched.isHubAction, isTrue);
+    expect(fetched.hubOutputBank, HubOutputBank.variables);
+    expect(fetched.hubVariableTag, 'All_Lights_Off');
+    expect(fetched.hubVariableValue, '1');
+    expect(fetched.summary, 'All_Lights_Off -> 1');
+  });
 }

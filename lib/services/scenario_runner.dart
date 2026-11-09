@@ -85,11 +85,14 @@ class ScenarioRunner {
       );
     }
 
-    final channelIndex =
-        action.isInputAction ? -1 : _resolveChannelIndex(module, action);
+    final bool isHubVariableTarget =
+        action.isHubAction && action.hubOutputBank == HubOutputBank.variables;
+    final channelIndex = action.isInputAction || isHubVariableTarget
+        ? -1
+        : _resolveChannelIndex(module, action);
     final inputIndex =
         action.isInputAction ? _resolveInputIndex(module, action) : -1;
-    if (!action.isInputAction && channelIndex < 0) {
+    if (!action.isInputAction && !isHubVariableTarget && channelIndex < 0) {
       return ScenarioActionResult(
         description: description,
         success: false,
@@ -166,12 +169,19 @@ class ScenarioRunner {
   /// [ScenarioAction.hubOutputBank]). Dispatch goes through
   /// [ModuleStatusService.sendHubOutputCommand] on a short-lived connection,
   /// so an unreachable Hub is simply reported as a failed action.
+  ///
+  /// A Variables target ([HubOutputBank.variables]) is not an output: it
+  /// writes a `vio` virtual tag with `set_tag` through
+  /// [ModuleStatusService.sendHubSetTag] instead.
   Future<ScenarioActionResult> _runHubAction(
     String description,
     ScenarioAction action,
     DeviceModule module,
     ModuleStatusService service,
   ) async {
+    if (action.hubOutputBank == HubOutputBank.variables) {
+      return _runHubVariableAction(description, action, module, service);
+    }
     final bankChannel = _hubBankChannelIndex(module, action);
     if (bankChannel < 0) {
       return ScenarioActionResult(
@@ -196,6 +206,48 @@ class ScenarioRunner {
       );
     } catch (e, st) {
       debugPrint('ScenarioRunner: hub action "$description" failed: $e\n$st');
+      return ScenarioActionResult(
+        description: description,
+        success: false,
+        detail: 'Command failed on ${module.name}: $e',
+      );
+    }
+  }
+
+  /// Runs a Hub Variables action: writes [ScenarioAction.hubVariableTag] with
+  /// `set_tag` (`vio.<tag>` fully-qualified wire reference) through
+  /// [ModuleStatusService.sendHubSetTag]. Configured value may be any string;
+  /// the same string is both rejected and written verbatim by the hub.
+  Future<ScenarioActionResult> _runHubVariableAction(
+    String description,
+    ScenarioAction action,
+    DeviceModule module,
+    ModuleStatusService service,
+  ) async {
+    final tag = action.hubVariableTag.trim();
+    if (tag.isEmpty) {
+      return ScenarioActionResult(
+        description: description,
+        success: false,
+        detail: 'No variable configured on ${module.name}',
+      );
+    }
+    try {
+      final bool ok = await service.sendHubSetTag(
+        module.id,
+        tag: tag,
+        value: action.hubVariableValue,
+      );
+      return ScenarioActionResult(
+        description: description,
+        success: ok,
+        detail: ok
+            ? '${action.channelName} set to "${action.hubVariableValue}" '
+                'on ${module.name}'
+            : 'Command rejected by ${module.name}',
+      );
+    } catch (e, st) {
+      debugPrint('ScenarioRunner: hub set_tag "$description" failed: $e\n$st');
       return ScenarioActionResult(
         description: description,
         success: false,

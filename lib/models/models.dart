@@ -774,15 +774,18 @@ extension InputActionStateX on InputActionState {
       };
 }
 
-/// Which output bank a scenario/automation action targets on a Modbus HUB
-/// module. Normal outputs are the regular relay/PDU outputs; modbus power
-/// outputs are the Modbus-controlled power channels.
-enum HubOutputBank { normal, modbusPower }
+/// What a scenario/automation action targets on a Modbus HUB module. Normal
+/// outputs are the regular relay/PDU outputs, modbus power outputs are the
+/// Modbus-controlled power channels, and variables are the hub's `vio`
+/// virtual tags (written through `set_tag` on TCP port 5008,
+/// doc/Modbus_Hub_Control_API.md §"Tag catalogue").
+enum HubOutputBank { normal, modbusPower, variables }
 
 extension HubOutputBankX on HubOutputBank {
   String get label => switch (this) {
         HubOutputBank.normal => 'Output',
         HubOutputBank.modbusPower => 'Modbus Output',
+        HubOutputBank.variables => 'Variables',
       };
 }
 
@@ -865,6 +868,8 @@ class ScenarioAction {
     this.isHubAction = false,
     this.hubOutputBank = HubOutputBank.normal,
     this.hubActionPulse = false,
+    this.hubVariableTag = '',
+    this.hubVariableValue = '',
   });
 
   /// Display label; also the legacy fallback when [moduleIndex] is unknown.
@@ -911,12 +916,23 @@ class ScenarioAction {
   /// When true, the action is a Pulse (ON then OFF) instead of a plain ON/OFF.
   final bool hubActionPulse;
 
+  /// When [hubOutputBank] is [HubOutputBank.variables], the targeted `vio`
+  /// tag's stored name (e.g. `Var_y`); the wire reference sent with
+  /// `set_tag` is the fully-qualified `vio.<tag>`.
+  final String hubVariableTag;
+
+  /// When [hubOutputBank] is [HubOutputBank.variables], the string value the
+  /// scenario writes to the tag.
+  final String hubVariableValue;
+
   String get summary => isInputAction
       ? '$inputName -> ${inputState.label}'
       : isDimmerAction
           ? '$channelName -> $brightnessPct%'
           : isHubAction
-              ? '$channelName -> ${hubActionPulse ? "Pulse" : turnOn ? "ON" : "OFF"}'
+              ? hubOutputBank == HubOutputBank.variables
+                  ? '$channelName -> $hubVariableValue'
+                  : '$channelName -> ${hubActionPulse ? "Pulse" : turnOn ? "ON" : "OFF"}'
               : '$channelName -> ${turnOn ? 'ON' : 'OFF'}';
 
   Map<String, Object?> toJson() => {
@@ -935,6 +951,10 @@ class ScenarioAction {
         if (isHubAction) 'isHubAction': true,
         if (isHubAction) 'hubOutputBank': hubOutputBank.name,
         if (isHubAction) 'hubActionPulse': hubActionPulse,
+        if (isHubAction && hubOutputBank == HubOutputBank.variables)
+          'hubVariableTag': hubVariableTag,
+        if (isHubAction && hubOutputBank == HubOutputBank.variables)
+          'hubVariableValue': hubVariableValue,
       };
 
   factory ScenarioAction.fromJson(Map<String, Object?> json) => ScenarioAction(
@@ -958,9 +978,12 @@ class ScenarioAction {
         isHubAction: json['isHubAction'] as bool? ?? false,
         hubOutputBank: switch (json['hubOutputBank'] as String?) {
           'modbusPower' => HubOutputBank.modbusPower,
+          'variables' => HubOutputBank.variables,
           _ => HubOutputBank.normal,
         },
         hubActionPulse: json['hubActionPulse'] as bool? ?? false,
+        hubVariableTag: json['hubVariableTag'] as String? ?? '',
+        hubVariableValue: json['hubVariableValue'] as String? ?? '',
       );
 }
 

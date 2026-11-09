@@ -429,6 +429,71 @@ class ModuleStatusService {
     }
   }
 
+  /// Sends one Hub `set_tag` command (protocol 1) for scenario dispatches:
+  /// writes a `vio` virtual tag using the preferred fully-qualified
+  /// `vio.<tag>` reference ([ScenarioAction.hubVariableTag] stores the bare
+  /// tag name; an already-qualified `vio.` tag is sent as-is).
+  ///
+  /// Short-lived connection, mirroring [sendHubOutputCommand]. On success the
+  /// cached tag value on the live module ([DeviceModule.virtualTags]) is
+  /// refreshed so UI cards reflect the write without waiting for the next
+  /// status pass.
+  Future<bool> sendHubSetTag(
+    String moduleId, {
+    required String tag,
+    required String value,
+  }) async {
+    DeviceModule? live;
+    for (final m in store.modules) {
+      if (m.id == moduleId) {
+        live = m;
+        break;
+      }
+    }
+    if (live == null) return false;
+    if (tag.trim().isEmpty) return false;
+    final connection = ModuleTcpConnection(
+      host: live.host,
+      port: live.controlApiPort,
+      timeout: const Duration(seconds: 5),
+    );
+    final protocol = HubJsonProtocol(connection);
+    // Wire the connection's data stream into the protocol ourselves - the
+    // same wiring the hub control screen does for its own client. Without
+    // it, responses are never parsed and every command times out.
+    StreamSubscription<String>? pump;
+    try {
+      pump = connection.dataStream.listen(protocol.feed);
+      await connection.connect();
+      if (!connection.isConnected) return false;
+      final wireTag = tag.startsWith('vio.') ? tag : 'vio.${tag.trim()}';
+      final response = await protocol.setTag(wireTag, value);
+      if (response.ok) {
+        final bare = wireTag.substring(4); // 'vio.?' -> stored tag name
+        final index =
+            live.virtualTags.indexWhere((t) => t.tagName == bare);
+        if (index >= 0) {
+          final cached = live.virtualTags[index];
+          live.virtualTags[index] = HubVirtualTag(
+            tag: cached.tag,
+            tagName: cached.tagName,
+            name: cached.name,
+            value: value,
+          );
+          _scheduleCommit();
+        }
+      }
+      return response.ok;
+    } catch (e, st) {
+      debugPrint(
+          'ModuleStatusService: set_tag on $moduleId failed: $e\n$st');
+      return false;
+    } finally {
+      await pump?.cancel();
+      protocol.dispose();
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Dimmer control catalogue facade (Control API spec §6). These commands are
   // Control-API-only: they need the live [SoleuxControlApiService] unit and
