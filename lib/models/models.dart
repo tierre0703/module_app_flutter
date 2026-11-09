@@ -492,6 +492,46 @@ double? _tempFrom(Object? value) {
   return null;
 }
 
+/// One Modbus Hub virtual tag from the `vio` group of the Hub tag catalogue
+/// (doc/Modbus_Hub_Control_API.md §"Tag catalogue"). Cached on
+/// [DeviceModule.virtualTags] as part of the hub information when the device
+/// info/status pass runs (`get_tag_groups` → `get_tag_group group:'vio'`).
+class HubVirtualTag {
+  const HubVirtualTag({
+    required this.tag,
+    required this.tagName,
+    this.name,
+    required this.value,
+  });
+
+  /// Stored tag name without the group prefix, e.g. `tag_1`. The
+  /// fully-qualified wire reference is `vio.<tag>` (ladder notation).
+  final String tag;
+
+  /// Tag name exactly as returned by the hub (`tag_name`).
+  final String tagName;
+
+  /// Human-readable tag label (`name`), when the hub reports one.
+  final String? name;
+
+  /// Current tag value (hub `value`), string-converted.
+  final String value;
+
+  factory HubVirtualTag.fromJson(Map<String, Object?> json) => HubVirtualTag(
+        tag: json['tag'] as String? ?? '',
+        tagName: json['tagName'] as String? ?? json['tag'] as String? ?? '',
+        name: json['name'] as String?,
+        value: json['value']?.toString() ?? '',
+      );
+
+  Map<String, Object?> toJson() => {
+        'tag': tag,
+        'tagName': tagName,
+        if (name != null) 'name': name,
+        'value': value,
+      };
+}
+
 /// A hardware module added to the system (brief section 2.1).
 class DeviceModule {
   DeviceModule({
@@ -518,9 +558,11 @@ class DeviceModule {
     this.lastSeenAt,
     List<ChannelOutput>? channels,
     List<PhysicalInput>? inputs,
+    List<HubVirtualTag>? virtualTags,
   })  : _tcpPort = tcpPort,
         channels = channels ?? <ChannelOutput>[],
-        inputs = inputs ?? <PhysicalInput>[];
+        inputs = inputs ?? <PhysicalInput>[],
+        virtualTags = virtualTags ?? <HubVirtualTag>[];
 
   final String id;
   String name;
@@ -616,6 +658,13 @@ class DeviceModule {
   final List<ChannelOutput> channels;
   final List<PhysicalInput> inputs;
 
+  /// Hub tag catalogue snapshot: the `vio` group's virtual tags, cached the
+  /// last time a Modbus Hub device-info/status pass fetched the read-only tag
+  /// catalogue (`get_tag_groups` + `get_tag_group group:'vio'`). Empty for
+  /// other module types and for hubs when the catalogue fetch has not
+  /// succeeded or the firmware does not expose it.
+  List<HubVirtualTag> virtualTags;
+
   bool get isOverTemperature =>
       internalTempC > tempMaxC || internalTempC < tempMinC;
 
@@ -644,6 +693,7 @@ class DeviceModule {
         if (systemInfo != null) 'systemInfo': systemInfo!.toJson(),
         'channels': channels.map((c) => c.toJson()).toList(),
         'inputs': inputs.map((i) => i.toJson()).toList(),
+        'virtualTags': virtualTags.map((t) => t.toJson()).toList(),
       };
 
   factory DeviceModule.fromJson(Map<String, Object?> json) => DeviceModule(
@@ -679,6 +729,10 @@ class DeviceModule {
         inputs: [
           for (final i in json['inputs'] as List? ?? const [])
             PhysicalInput.fromJson((i as Map).cast<String, Object?>()),
+        ],
+        virtualTags: [
+          for (final t in json['virtualTags'] as List? ?? const [])
+            HubVirtualTag.fromJson((t as Map).cast<String, Object?>()),
         ],
       )..systemInfo = json['systemInfo'] is Map
           ? DeviceSystemInfo.fromJson(

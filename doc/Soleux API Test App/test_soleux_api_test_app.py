@@ -14,6 +14,7 @@ from soleux_api_test_app import (
     PROFILE_MODBUS_HUB,
     PROFILE_PDU_V1,
     PROFILE_RELAY,
+    READ_ONLY_ACTIONS,
     ControlApiClient,
     actions_for_profile,
     build_request,
@@ -79,10 +80,16 @@ class SoleuxApiTestAppTests(unittest.TestCase):
         self.assertEqual(
             1, preset_for_action(PROFILE_MODBUS_HUB, "set_output")["channel"])
         self.assertEqual(
+            "therm1.temperature",
+            preset_for_action(PROFILE_MODBUS_HUB, "get_tag_details")["tag_name"])
+        for action in ("get_tag_groups", "get_tag_group", "get_tag_details"):
+            self.assertIn(action, READ_ONLY_ACTIONS)
+        self.assertEqual(
             (
                 "hello", "get_dashboard", "set_output", "pulse_output",
                 "set_modbus_output", "restart_modbus_output", "set_tag",
-                "get_tag", "get_device_info", "get_system",
+                "get_tag", "get_tag_groups", "get_tag_group",
+                "get_tag_details", "get_device_info", "get_system",
                 "clear_system_logs", "get_settings", "save_settings",
                 "settings_action", "transfer_upload_begin",
                 "transfer_upload_chunk", "transfer_upload_finish",

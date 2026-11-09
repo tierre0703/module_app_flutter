@@ -1,7 +1,7 @@
 # Soleux Modbus Hub Control API
 
 Implementation status: documented from the active Modbus Hub source as of
-15 October 2026.
+6 November 2026.
 
 This document describes the JSON API implemented by
 `Device Firmware/ModBusHub/VirtualTCPListener.py`. The Hub is intentionally
@@ -22,7 +22,7 @@ different from the Relay Module, Dimmer, and PDU protocol-2 profiles:
 | UDP heartbeat | Port `5007` | Reachability and API metadata |
 | Hub JSON API | Port `5008` | Protocol-1, unprefixed, newline-delimited JSON |
 | UDP discovery | Port `8000` | Discovery request and callback response |
-| HTTP/HTTPS | Web listener, if supplied by the installed build | Optional tag-only API; not the full Hub command catalogue |
+| HTTP/HTTPS | Web listener | Protocol-2 virtual-tag API; not the full Hub command catalogue |
 
 The current `VirtualTCPListener.py` defines `PORT = 5005`, `LITE_PORT = 5006`,
 and `JSON_PORT = 5008`. Unlike the other Soleux device families, the Hub JSON
@@ -84,6 +84,16 @@ should accept both error forms when they support multiple device families.
 Send `hello` first. Its `actions` array is the authoritative command list for
 the installed firmware.
 
+### Firmware compatibility
+
+`get_device_info` is not implemented by every deployed Hub firmware. In
+particular, the V7.20 deployment handler does not advertise or dispatch it;
+the V7.21/V7.22 and current-source handlers do. Only send this command when it
+is present in `hello.result.actions`. On older firmware, use `get_system` for
+the available identity, version, network, and system information. An
+`unknown action: get_device_info` response therefore indicates an older API
+capability, not malformed request JSON.
+
 ## Channel and state rules
 
 - Normal-output and Modbus-power-output **command channels are one-based**.
@@ -107,7 +117,7 @@ the installed firmware.
 | Action | Parameters | Result or behavior |
 |---|---|---|
 | `hello` | `{}` | `protocol:1`, `device_type:"modbus_hub"`, and the advertised `actions` array |
-| `get_device_info` | `{}` | Name, model, application firmware, MCU firmware/hardware, serial, and Ethernet MAC |
+| `get_device_info` | `{}` | Newer firmware only (check `hello.result.actions`); name, model, application firmware, MCU firmware/hardware, serial, and Ethernet MAC |
 | `get_dashboard` | `{}` | Configured counts, live system status, normal outputs, and Modbus power outputs |
 | `set_output` | `channel`, `state` | Set one normal output and return its refreshed output record |
 | `pulse_output` | `channel` | Turn one normal output on, then off after one second |
@@ -115,6 +125,9 @@ the installed firmware.
 | `restart_modbus_output` | `channel` | Turn one Modbus power output off, then on after ten seconds |
 | `get_tag` | `tag_name` | Existing virtual-tag ID, name, tag name, and value |
 | `set_tag` | `tag_name`, `value` | Update an existing virtual tag and return ID, tag name, and string value |
+| `get_tag_groups` | `{}` | Built-in groups plus every Modbus RTU/TCP device and its connection metadata |
+| `get_tag_group` | `group` | Group metadata plus all tag values and type-specific parameters in that group |
+| `get_tag_details` | Fully-qualified `tag_name` | One tag's value, parameters, and containing-group metadata |
 
 `get_dashboard` returns this general shape:
 
@@ -160,13 +173,78 @@ output is rejected until the first completes. An accepted response reports
 `accepted:true`, `duration_seconds`, and the initial output record. Confirm the
 final state through `get_dashboard` or a confirmed hardware event.
 
-Virtual tags must already exist. `tag_name` and the string-converted `value`
-are limited to 255 characters.
+Virtual tags must already exist. The preferred wire reference is
+`vio.<tag_name>`, matching ladder-logic notation, while unprefixed names remain
+accepted for backward compatibility. The `vio.` namespace is not stored in the
+database. The stored tag name and string-converted `value` are each limited to
+255 characters. Responses preserve the notation used by the request.
 
 ```json
-{"protocol":1,"id":6,"action":"get_tag","params":{"tag_name":"tag_1"}}
-{"protocol":1,"id":7,"action":"set_tag","params":{"tag_name":"tag_1","value":"100"}}
+{"protocol":1,"id":6,"action":"get_tag","params":{"tag_name":"vio.tag_1"}}
+{"protocol":1,"id":7,"action":"set_tag","params":{"tag_name":"vio.tag_1","value":"100"}}
 ```
+
+The legacy port-5005/5006 equivalents are:
+
+```text
+AT+GETTAG:vio.tag_1
+AT+SETTAG:vio.tag_1:100
+```
+
+Normal and Modbus-power outputs do not currently have legacy AT tag commands.
+Their ladder references are `io.<tag_name>` and `buspwr.<tag_name>`, but TCP
+output control remains channel-based through `set_output` and
+`set_modbus_output` on port 5008.
+
+### Tag catalogue
+
+Port `5008` exposes a read-only tag catalogue using uniform, fully-qualified
+names:
+
+```text
+vio.Var_x
+io.main_output
+buspwr.rs485_power
+therm1.temperature
+meter1.voltage_l1
+```
+
+The built-in groups are `vio`, `io`, and `buspwr`. Every configured Modbus RTU
+or Modbus TCP device contributes another group whose name is the device's
+configured `tag` value.
+
+List all groups and devices:
+
+```json
+{"protocol":1,"id":8,"action":"get_tag_groups","params":{}}
+```
+
+Each result item includes `group`, `name`, `kind`, and `tag_count`. Device
+groups also include `device_id`, `slave_id`, model/type fields, and a `modbus`
+object. RTU metadata identifies the serial port, description, baud rate,
+parity, stop bits, timeout, polling interval, and enabled state. TCP metadata
+identifies the target IP address, port, timeout, and polling interval.
+
+Read all tags in a built-in or device group:
+
+```json
+{"protocol":1,"id":9,"action":"get_tag_group","params":{"group":"therm1"}}
+{"protocol":1,"id":10,"action":"get_tag_group","params":{"group":"vio"}}
+```
+
+Each tag includes `tag`, `tag_name`, `group`, `category`, `name`, `value`, and
+a type-specific `parameters` object. Device-register values prefer the current
+`realtime_value` and fall back to the configured `value` when no realtime
+value is available.
+
+Read one fully-qualified tag:
+
+```json
+{"protocol":1,"id":11,"action":"get_tag_details","params":{"tag_name":"therm1.temperature"}}
+```
+
+`get_tag_details` requires `<group>.<tag>` notation so identical tag names in
+different devices remain unambiguous.
 
 ### System information and logs
 
@@ -418,33 +496,42 @@ The current event broadcaster uses `protocol:2` even though the Hub request/
 response command catalogue identifies itself as protocol 1. Clients should
 classify events by `id:null` plus `event`, not by the protocol number alone.
 
-## Optional HTTP tag API
+## HTTP tag API
 
-The complete Hub catalogue above is TCP-only. The active
-`Device Firmware/ModBusHub/app/routes.py` source does not currently register a
-general Control API HTTP route.
-
-Some packaged builds contain `TagAPIController`. In those builds only
-`get_tag` and `set_tag` are exposed over HTTP, using protocol 2:
+The complete Hub catalogue above remains TCP-only. HTTP exposes the legacy
+virtual-tag commands through the same protocol-2 envelope used by other Soleux
+devices:
 
 ```http
 POST /api/v1/command
 Content-Type: application/json
 
-{"protocol":2,"id":70,"action":"get_tag","params":{"tag_name":"tag_1"}}
+{"protocol":2,"id":70,"action":"AT_GETTAG","params":{"tag_name":"vio.tag_1"}}
 ```
 
-The same optional build can expose:
+Set a tag:
+
+```json
+{"protocol":2,"id":71,"action":"AT_SETTAG","params":{"tag_name":"vio.tag_1","value":"100"}}
+```
+
+Action names are case-insensitive. `get_tag` and `set_tag` remain accepted as
+backward-compatible aliases. The active source also exposes the convenience
+routes:
 
 ```text
 POST /api/set-tag
-GET  /api/get-tag?tag_name=tag_1
+GET  /api/get-tag?tag_name=vio.tag_1
 POST /api/get-tag
 ```
 
 Those HTTP routes use the HTTP API IP/MAC allow list. Commands such as
 `get_dashboard`, `save_settings`, output control, user management, and transfers
 must not be assumed to work through `/api/v1/command`; use TCP port `5008`.
+
+Every command accepted on the legacy `5005/5006` command dispatcher must have
+an HTTP `AT_...` alias. A source contract test enforces that mapping whenever a
+new legacy command is added.
 
 ## Discovery metadata
 

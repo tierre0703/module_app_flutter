@@ -174,6 +174,8 @@ class _HubControlScreenState extends State<HubControlScreen> {
         }
       }
 
+      await _fetchVirtualTags();
+
       await _fetchDashboard();
 
       if (mounted) setState(() {});
@@ -181,6 +183,35 @@ class _HubControlScreenState extends State<HubControlScreen> {
       debugPrint('HubControlScreen: connect/refresh failed: $e\n$st');
       _offline = true;
       if (mounted) setState(() {});
+    }
+  }
+
+  /// Fetches the `vio` virtual-tag group from the read-only hub tag catalogue
+  /// (`get_tag_groups` + `get_tag_group group:'vio'`), caches it on the
+  /// module's persisted hub information ([DeviceModule.virtualTags], doc
+  /// §"Tag catalogue"), and keeps it current across screen refreshes.
+  ///
+  /// Never fails the connect/refresh pass: unsupported (`unknown action`) or
+  /// erroring catalogue fetches leave the previously cached tags untouched.
+  Future<void> _fetchVirtualTags() async {
+    final client = _hubClient;
+    if (client == null || !client.isConnected) return;
+    try {
+      final groupsResp = await client.getTagGroups();
+      if (!groupsResp.ok || groupsResp.result == null) return;
+      final groups = HubTagGroupsData.fromResult(groupsResp.result!);
+      if (groups.byGroup('vio') == null) return;
+      final groupResp = await client.getTagGroup('vio');
+      if (!groupResp.ok || groupResp.result == null) return;
+      final group = HubTagGroupData.fromResult(groupResp.result!);
+      if (group.tags.isEmpty) return;
+      ModuleStore.shared.update(widget.module.id, (m) {
+        m.virtualTags = [
+          for (final record in group.tags) record.toVirtualTag(),
+        ];
+      });
+    } catch (e, st) {
+      debugPrint('HubControlScreen: vio tag fetch failed: $e\n$st');
     }
   }
 
@@ -439,6 +470,30 @@ class _HubControlScreenState extends State<HubControlScreen> {
                         _infoRow('Serial', di.serial!, onSurface),
                       if (di.mac != null)
                         _infoRow('MAC', di.mac!, onSurface),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+
+            if (module.virtualTags.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Virtual Tags (vio)',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 16)),
+                      const SizedBox(height: 4),
+                      for (final tag in module.virtualTags)
+                        _infoRow(
+                            (tag.name == null || tag.name!.isEmpty)
+                                ? tag.tagName
+                                : tag.name!,
+                            tag.value, onSurface),
                     ],
                   ),
                 ),

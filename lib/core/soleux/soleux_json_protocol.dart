@@ -112,6 +112,9 @@ abstract final class SoleuxJsonActions {
   static const String restartModbusOutput = 'restart_modbus_output';
   static const String getTag = 'get_tag';
   static const String setTag = 'set_tag';
+  static const String getTagGroups = 'get_tag_groups';
+  static const String getTagGroup = 'get_tag_group';
+  static const String getTagDetails = 'get_tag_details';
   static const String getSystem = 'get_system';
   static const String clearSystemLogs = 'clear_system_logs';
   static const String getSettings = 'get_settings';

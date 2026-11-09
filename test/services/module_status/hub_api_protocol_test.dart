@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:soleux_device_manager/models/models.dart';
 import 'package:soleux_device_manager/services/module_status/hub_api_protocol.dart';
 import 'package:soleux_device_manager/services/module_status/module_tcp_service.dart';
 
@@ -61,10 +62,76 @@ class _FakeHub {
     final action = request['action'];
     final params = request['params'] as Map<String, dynamic>;
     final result = switch (action) {
-      'hello' => {'protocol': 1, 'device': 'modbus_hub', 'actions': []},
+      'hello' => {
+          'protocol': 1,
+          'device': 'modbus_hub',
+          'actions': [
+            'hello',
+            'get_device_info',
+            'get_dashboard',
+            'set_output',
+            'get_tag',
+            'set_tag',
+            'get_tag_groups',
+            'get_tag_group',
+            'get_tag_details',
+          ],
+        },
       'set_output' || 'set_modbus_output' => {
           'channel': params['channel'],
           'state': params['state'],
+        },
+      'get_tag_groups' => {
+          'groups': [
+            {
+              'group': 'vio',
+              'name': 'Virtual Tags',
+              'kind': 'builtin',
+              'tag_count': 2,
+            },
+            {
+              'group': 'therm1',
+              'name': 'Thermometers',
+              'kind': 'device',
+              'tag_count': 1,
+            },
+          ],
+        },
+      'get_tag_group' when params['group'] == 'vio' => {
+          'group': 'vio',
+          'name': 'Virtual Tags',
+          'kind': 'builtin',
+          'tags': [
+            {
+              'tag': 'tag_1',
+              'tag_name': 'tag_1',
+              'group': 'vio',
+              'category': 'virtual',
+              'name': 'Tag 1',
+              'value': '100',
+              'parameters': {},
+            },
+            {
+              'tag': 'Var_2',
+              'tag_name': 'Var_2',
+              'group': 'vio',
+              'category': 'virtual',
+              'name': '',
+              'value': 'on',
+              'parameters': {},
+            },
+          ],
+        },
+      'get_tag_group' => {
+          'group': params['group'],
+          'tags': [],
+        },
+      'get_tag_details' => {
+          'tag': 'temperature',
+          'tag_name': 'therm1.temperature',
+          'group': 'therm1',
+          'value': '23.4',
+          'parameters': {'address': 1},
         },
       _ => {},
     };
@@ -123,5 +190,85 @@ void main() {
       protocol.dispose();
       hub.server.close();
     }
+  });
+
+  test('tag catalogue commands reach the device and parse result models',
+      () async {
+    final hub = await _FakeHub.start();
+    final (protocol, pump, connection) = await _openSession(hub);
+    try {
+      final groupsResp = await protocol.getTagGroups();
+      expect(groupsResp.ok, isTrue);
+      final params = jsonDecode(hub.received.last) as Map<String, dynamic>;
+      expect(params['action'], 'get_tag_groups');
+      expect(params['protocol'], 1);
+
+      final groups = HubTagGroupsData.fromResult(groupsResp.result!);
+      expect(groups.groups.length, 2);
+      expect(groups.byGroup('vio')!.tagCount, 2);
+      expect(groups.byGroup('VIO')!.group, 'vio');
+      expect(groups.byGroup('missing'), isNull);
+
+      final groupResp = await protocol.getTagGroup('vio');
+      expect(groupResp.ok, isTrue);
+      final req = jsonDecode(hub.received.last) as Map<String, dynamic>;
+      expect(req['action'], 'get_tag_group');
+      expect(req['params']['group'], 'vio');
+
+      final group = HubTagGroupData.fromResult(groupResp.result!);
+      expect(group.group, 'vio');
+      expect(group.tags.length, 2);
+      expect(group.tags[0].tag, 'tag_1');
+      expect(group.tags[0].value, '100');
+      expect(group.tags[1].value, 'on');
+
+      final cached = group.tags.map((r) => r.toVirtualTag()).toList();
+      expect(cached.first, isA<HubVirtualTag>());
+      expect(cached.first.tag, 'tag_1');
+      expect(cached.first.tagName, 'tag_1');
+      expect(cached.first.name, 'Tag 1');
+      expect(cached.first.value, '100');
+      // Empty reported labels degrade to null (UI falls back to the tag name).
+      expect(cached[1].name, isNull);
+      expect(cached[1].value, 'on');
+
+      final detailsResp = await protocol.getTagDetails('therm1.temperature');
+      expect(detailsResp.ok, isTrue);
+      final last = jsonDecode(hub.received.last) as Map<String, dynamic>;
+      expect(last['action'], 'get_tag_details');
+      expect(last['params']['tag_name'], 'therm1.temperature');
+      final record =
+          HubTagRecord.fromJson(Map<String, dynamic>.from(detailsResp.result!));
+      expect(record.tagName, 'therm1.temperature');
+      expect(record.value, '23.4');
+    } finally {
+      await pump.cancel();
+      protocol.dispose();
+      hub.server.close();
+    }
+  });
+
+  test('HubVirtualTag persists through the DeviceModule JSON round-trip', () {
+    final module = DeviceModule(
+      id: 'hub-1',
+      name: 'Plant Hub',
+      type: ModuleType.hub,
+      ipAddress: '192.168.1.50',
+      status: ConnectionStatus.online,
+      roomName: 'Plant',
+      internalTempC: 0,
+      virtualTags: const [
+        HubVirtualTag(
+            tag: 'tag_1', tagName: 'tag_1', name: 'Tag 1', value: '100'),
+        HubVirtualTag(tag: 'Var_2', tagName: 'Var_2', value: 'on'),
+      ],
+    );
+    final restored = DeviceModule.fromJson(module.toJson());
+    expect(restored.virtualTags.length, 2);
+    expect(restored.virtualTags[0].tag, 'tag_1');
+    expect(restored.virtualTags[0].name, 'Tag 1');
+    expect(restored.virtualTags[0].value, '100');
+    expect(restored.virtualTags[1].name, isNull);
+    expect(restored.virtualTags[1].value, 'on');
   });
 }

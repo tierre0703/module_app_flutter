@@ -52,7 +52,6 @@ import 'soleux_http_service.dart';
 import 'soleux_json_fetcher.dart';
 import 'soleux_json_service.dart';
 import 'hub_api_protocol.dart';
-import 'module_tcp_service.dart';
 
 /// Formats a [DateTime] for the device's system-log filters
 /// (`log_from`/`log_to`, `YYYY-MM-DD HH:MM:SS`).
@@ -1456,7 +1455,13 @@ class ModuleStatusService {
 
   /// Probes a modbus HUB module with `get_device_info` and `get_dashboard`,
   /// then applies the live data (system status, regular outputs and modbus
-  /// power outputs) to the module store.
+  /// power outputs) to the module store. Also fetches the `vio` group of the
+  /// read-only hub tag catalogue (`get_tag_groups` + `get_tag_group`) and
+  /// caches it on the module's hub information ([DeviceModule.virtualTags]).
+  ///
+  /// Commands guarded by the `hello` `actions` list are only sent when the
+  /// firmware advertises them (doc/Modbus_Hub_Control_API.md §"Firmware
+  /// compatibility"); an unadvertised list is treated as the full catalogue.
   Future<void> _probeHub(DeviceModule live) async {
     final connection = ModuleTcpConnection(
       host: live.host,
@@ -1464,6 +1469,9 @@ class ModuleStatusService {
       timeout: const Duration(seconds: 5),
     );
     final protocol = HubJsonProtocol(connection);
+    // The protocol decodes from the socket stream: without this wiring every
+    // command would run into its timeout (see hub_api_protocol_test).
+    final pump = connection.dataStream.listen(protocol.feed);
     try {
       await connection.connect();
       if (!connection.isConnected) {
@@ -1476,17 +1484,25 @@ class ModuleStatusService {
         _applyReachability(live, alive: false);
         return;
       }
+      final advertisedActions = _hubAdvertisedActions(hello);
 
-      final infoResp = await protocol.getDeviceInfo();
-      if (infoResp.ok && infoResp.result != null) {
-        final info = HubDeviceInfo.fromResult(infoResp.result!);
-        if (info.name != null && info.name!.isNotEmpty) {
-          live.name = info.name!;
+      if (advertisedActions == null ||
+          advertisedActions.contains('get_device_info')) {
+        final infoResp = await protocol.getDeviceInfo();
+        if (infoResp.ok && infoResp.result != null) {
+          final info = HubDeviceInfo.fromResult(infoResp.result!);
+          if (info.name != null && info.name!.isNotEmpty) {
+            live.name = info.name!;
+          }
+          if (info.serial != null) live.serial = info.serial;
+          if (info.mac != null) live.mac = info.mac;
+          if (info.appFirmware != null) live.firmware = info.appFirmware;
         }
-        if (info.serial != null) live.serial = info.serial;
-        if (info.mac != null) live.mac = info.mac;
-        if (info.appFirmware != null) live.firmware = info.appFirmware;
       }
+
+      // Hub information extras: cache the vio virtual tags from the
+      // read-only tag catalogue (guarded by the advertised actions).
+      await _fetchHubVirtualTags(live, protocol, advertisedActions);
 
       final dashResp = await protocol.getDashboard();
       if (dashResp.ok && dashResp.result != null) {
@@ -1531,7 +1547,59 @@ class ModuleStatusService {
       debugPrint('Hub probe failed for ${live.name} (${live.id}): $e\n$st');
       _applyReachability(live, alive: false);
     } finally {
+      await pump.cancel();
       protocol.dispose();
+    }
+  }
+
+  /// The action names advertised by the hub `hello` result, or null when the
+  /// firmware does not advertise a list (an empty list is treated the same:
+  /// assume the full catalogue and let `ok:false` answers degrade gracefully).
+  Set<String>? _hubAdvertisedActions(HubCommandResponse hello) {
+    final raw = hello.result?['actions'];
+    if (raw is! List) return null;
+    final names = {
+      for (final action in raw)
+        if (action is String) action.toLowerCase(),
+    };
+    return names.isEmpty ? null : names;
+  }
+
+  /// Fetches the `vio` virtual-tag group from the hub tag catalogue
+  /// (`get_tag_groups`, then `get_tag_group group:'vio'`) and caches it on
+  /// [live.virtualTags] (doc/Modbus_Hub_Control_API.md §"Tag catalogue").
+  ///
+  /// A failed or unsupported fetch never fails the hub probe: older firmware
+  /// without the new commands is skipped via [advertisedActions], and a
+  /// runtime error keeps the previously cached tags.
+  Future<void> _fetchHubVirtualTags(
+    DeviceModule live,
+    HubJsonProtocol protocol,
+    Set<String>? advertisedActions,
+  ) async {
+    try {
+      if (advertisedActions != null &&
+          !advertisedActions.contains('get_tag_groups')) {
+        return;
+      }
+      final groupsResp = await protocol.getTagGroups();
+      if (!groupsResp.ok || groupsResp.result == null) return;
+      final groups = HubTagGroupsData.fromResult(groupsResp.result!);
+      if (groups.byGroup('vio') == null) {
+        // The hub reports no virtual tags: clear any stale cache.
+        live.virtualTags = const <HubVirtualTag>[];
+        return;
+      }
+      final groupResp = await protocol.getTagGroup('vio');
+      if (!groupResp.ok || groupResp.result == null) return;
+      final group = HubTagGroupData.fromResult(groupResp.result!);
+      live.virtualTags = [
+        for (final record in group.tags) record.toVirtualTag(),
+      ];
+    } catch (e, st) {
+      debugPrint(
+          'Hub tag catalogue fetch failed for ${live.name} (${live.id}): '
+          '$e\n$st');
     }
   }
 

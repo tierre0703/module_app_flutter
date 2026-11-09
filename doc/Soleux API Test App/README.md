@@ -51,7 +51,26 @@ The common profiles include identity, live state, I/O control, configuration pag
 - **PDU Energy Meter:** adds `get_energy_state` and `get_energy_history`.
 - **High Power PDU:** excludes Energy Meter-only commands.
 - **PDU 1.0:** excludes input, mapping, Dimmer, energy, and hardware-write commands that its firmware does not support.
-- **Modbus Hub:** uses protocol 1 and adds dashboard, normal/Modbus output control, virtual tags, system logs, settings, security, users, permissions, I/O configuration, and backup/restore commands. Its output channels are one-based.
+- **Modbus Hub:** uses protocol 1 and adds dashboard, normal/Modbus output control, virtual tags, the read-only tag catalogue, system logs, settings, security, users, permissions, I/O configuration, and backup/restore commands. Its output channels are one-based.
+
+## Modbus Hub tag catalogue
+
+Port `5008` exposes a read-only tag catalogue using fully-qualified names. The built-in groups are `vio`, `io`, and `buspwr`; every configured Modbus RTU/TCP device contributes another group named after its configured `tag` value.
+
+- `get_tag_groups` lists every group and device with `group`, `name`, `kind`, and `tag_count` (device groups add connection metadata such as `slave_id` and a `modbus` object).
+- `get_tag_group` reads all tag values plus type-specific `parameters` in one group:
+
+```json
+{"group": "therm1"}
+```
+
+- `get_tag_details` reads one fully-qualified tag, its parameters, and its containing-group metadata:
+
+```json
+{"tag_name": "therm1.temperature"}
+```
+
+`get_tag_details` requires `<group>.<tag>` notation so identical tag names on different devices stay unambiguous. `set_tag` and `get_tag` still target existing virtual tags; `vio.` is the preferred wire prefix (`vio.tag_1`), matching ladder-logic notation.
 
 Relay, Dimmer, and PDU Control API input/output channels begin at `0`. Modbus Hub normal and Modbus power-output channels begin at `1`. Commands that can change configuration or physical state display a confirmation dialog by default.
 

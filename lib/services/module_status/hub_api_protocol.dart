@@ -9,7 +9,8 @@
 //   - identity: `hello`, `get_device_info`
 //   - dashboard and output control: `get_dashboard`, `set_output`,
 //     `pulse_output`, `set_modbus_output`, `restart_modbus_output`
-//   - tags: `get_tag`, `set_tag`
+//   - tags: `get_tag`, `set_tag`, `get_tag_groups`, `get_tag_group`,
+//     `get_tag_details`
 //   - system and logs: `get_system`, `clear_system_logs`
 //   - settings: `get_settings`, `save_settings`, `settings_action`
 //   - security: `get_security`, `save_security`, `security_action`
@@ -33,6 +34,7 @@ import 'dart:convert';
 
 import '../../core/logger/app_logger.dart';
 import '../../core/soleux/soleux_device_event.dart';
+import '../../models/models.dart';
 import 'module_tcp_service.dart';
 
 /// Response from a Hub command, wrapping the raw `id`, `ok`, result and error.
@@ -183,6 +185,144 @@ class HubDeviceInfo {
         serial: result['serial'] as String?,
         mac: result['mac'] as String?,
       );
+}
+
+/// One group summary from `get_tag_groups` (doc §"Tag catalogue"): the
+/// built-in groups `vio`, `io`, and `buspwr`, plus one entry per configured
+/// Modbus RTU/TCP device (whose group name is the device's configured `tag`).
+class HubTagGroupInfo {
+  final String group;
+  final String name;
+  final String kind;
+  final int tagCount;
+
+  const HubTagGroupInfo({
+    required this.group,
+    required this.name,
+    this.kind = '',
+    this.tagCount = 0,
+  });
+
+  factory HubTagGroupInfo.fromJson(Map<String, dynamic> json) =>
+      HubTagGroupInfo(
+        group: json['group'] as String? ?? '',
+        name: json['name'] as String? ?? '',
+        kind: json['kind'] as String? ?? '',
+        tagCount: (json['tag_count'] as num?)?.toInt() ?? 0,
+      );
+}
+
+/// Tag groups catalogue from `get_tag_groups` (read-only, TCP port 5008).
+class HubTagGroupsData {
+  final List<HubTagGroupInfo> groups;
+
+  const HubTagGroupsData({this.groups = const []});
+
+  /// Tolerant to the hub returning a bare result list or an object wrapping
+  /// it (`{'groups': [...]}`-style).
+  factory HubTagGroupsData.fromResult(Object? result) {
+    final items = <dynamic>[];
+    if (result is List) {
+      items.addAll(result);
+    } else if (result is Map) {
+      final map = Map<String, dynamic>.from(result);
+      final raw = map['groups'] ?? map['items'] ?? map['devices'];
+      if (raw is List) items.addAll(raw);
+    }
+    return HubTagGroupsData(
+      groups: [
+        for (final g in items)
+          if (g is Map) HubTagGroupInfo.fromJson(Map<String, dynamic>.from(g)),
+      ],
+    );
+  }
+
+  /// The group with [groupTag], matched case-insensitively, or null.
+  HubTagGroupInfo? byGroup(String groupTag) {
+    final wanted = groupTag.toLowerCase();
+    for (final g in groups) {
+      if (g.group.toLowerCase() == wanted) return g;
+    }
+    return null;
+  }
+}
+
+/// One tag record from the `get_tag_group` catalogue response. `value` is
+/// string-converted; device-register values prefer the hub's current
+/// `realtime_value` and fall back to its configured value.
+class HubTagRecord {
+  final String tag;
+  final String tagName;
+  final String? group;
+  final String? category;
+  final String? name;
+  final String value;
+
+  const HubTagRecord({
+    required this.tag,
+    required this.tagName,
+    this.group,
+    this.category,
+    this.name,
+    required this.value,
+  });
+
+  factory HubTagRecord.fromJson(Map<String, dynamic> json) => HubTagRecord(
+        tag: json['tag'] as String? ?? '',
+        tagName: json['tag_name'] as String? ?? '',
+        group: json['group'] as String?,
+        category: json['category'] as String?,
+        name: json['name'] as String?,
+        value: json['value']?.toString() ?? '',
+      );
+
+  /// Maps a `vio` group record onto the cached [HubVirtualTag] hub
+  /// information model ([DeviceModule.virtualTags]).
+  HubVirtualTag toVirtualTag() => HubVirtualTag(
+        tag: tag,
+        tagName: tagName,
+        name: (name == null || name!.isEmpty) ? null : name,
+        value: value,
+      );
+}
+
+/// Group catalogue response from `get_tag_group`: the group metadata plus
+/// every tag value and its type-specific parameters.
+class HubTagGroupData {
+  final String? group;
+  final String? name;
+  final String? kind;
+  final List<HubTagRecord> tags;
+
+  const HubTagGroupData({
+    this.group,
+    this.name,
+    this.kind,
+    this.tags = const [],
+  });
+
+  /// Tolerant to the hub returning a bare tag list or a group-metadata object
+  /// holding the tags under `tags`/`items`.
+  factory HubTagGroupData.fromResult(Object? result) {
+    final metadata = <String, dynamic>{};
+    List<dynamic>? rawTags;
+    if (result is List) {
+      rawTags = result;
+    } else if (result is Map) {
+      metadata.addAll(Map<String, dynamic>.from(result));
+      final raw = metadata.remove('tags') ?? metadata.remove('items');
+      if (raw is List) rawTags = raw;
+    }
+    return HubTagGroupData(
+      group: metadata['group'] as String?,
+      name: metadata['name'] as String?,
+      kind: metadata['kind'] as String?,
+      tags: [
+        for (final t in rawTags ?? const [])
+          if (t is Map) HubTagRecord.fromJson(Map<String, dynamic>.from(t)),
+      ],
+    );
+  }
 }
 
 /// Buffer-based line splitter for CR/LF-delimited TCP streams.
@@ -339,6 +479,21 @@ class HubJsonProtocol {
   /// `set_tag` - write a virtual tag's value.
   Future<HubCommandResponse> setTag(String tagName, String value) =>
       sendCommand('set_tag', {'tag_name': tagName, 'value': value});
+
+  /// `get_tag_groups` - read-only tag catalogue groups: built-in `vio`, `io`
+  /// and `buspwr` groups plus one entry per configured Modbus RTU/TCP device.
+  Future<HubCommandResponse> getTagGroups() =>
+      sendCommand('get_tag_groups', const {});
+
+  /// `get_tag_group` - one group's metadata plus every tag value and its
+  /// type-specific parameters (e.g. group `vio` for the virtual tags).
+  Future<HubCommandResponse> getTagGroup(String group) =>
+      sendCommand('get_tag_group', {'group': group});
+
+  /// `get_tag_details` - one fully-qualified `<group>.<tag>` tag's value,
+  /// parameters, and containing-group metadata.
+  Future<HubCommandResponse> getTagDetails(String tagName) =>
+      sendCommand('get_tag_details', {'tag_name': tagName});
 
   /// `get_system` - system info and logs (paginated).
   Future<HubCommandResponse> getSystem({int page = 1, int pageSize = 10}) =>
