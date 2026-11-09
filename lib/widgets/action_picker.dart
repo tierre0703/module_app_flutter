@@ -531,7 +531,7 @@ Future<ScenarioAction?> showAddActionSheet(
                             sliderChannel()?.snapBrightness(v.round()) ??
                                 v.round()),
                       ),
-                    ] else ...[
+                    ] else if (!isHubVariableTarget) ...[
                       Text(l10n.actionPickerState,
                           style: Theme.of(context).textTheme.bodyLarge),
                       const SizedBox(height: 8),
