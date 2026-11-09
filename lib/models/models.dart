@@ -784,8 +784,8 @@ enum HubOutputBank { normal, modbusPower, variables }
 extension HubOutputBankX on HubOutputBank {
   String get label => switch (this) {
         HubOutputBank.normal => 'Output',
-        HubOutputBank.modbusPower => 'Modbus Output',
-        HubOutputBank.variables => 'Variables',
+        HubOutputBank.modbusPower => 'Modbus',
+        HubOutputBank.variables => 'Vars',
       };
 }
 

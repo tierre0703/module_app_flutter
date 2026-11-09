@@ -484,7 +484,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Virtual Tags (vio)',
+                      Text(l10n.hubVirtualTagsTitle,
                           style: TextStyle(
                               fontWeight: FontWeight.w700, fontSize: 16)),
                       const SizedBox(height: 4),

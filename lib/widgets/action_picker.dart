@@ -312,21 +312,21 @@ Future<ScenarioAction?> showAddActionSheet(
                       // the Modbus Power output bank, and the hub's `vio`
                       // virtual-tag Variables instead of Output vs Input.
                       SegmentedButton<HubOutputBank>(
-                        segments: const [
+                        segments: [
                           ButtonSegment(
                             value: HubOutputBank.normal,
-                            label: Text('Output'),
-                            icon: Icon(Icons.output_outlined),
+                            label: Text(l10n.actionPickerOutputTarget),
+                            icon: const Icon(Icons.output_outlined),
                           ),
                           ButtonSegment(
                             value: HubOutputBank.modbusPower,
-                            label: Text('Modbus Output'),
-                            icon: Icon(Icons.electrical_services),
+                            label: Text(l10n.actionPickerHubModbusTarget),
+                            icon: const Icon(Icons.electrical_services),
                           ),
                           ButtonSegment(
                             value: HubOutputBank.variables,
-                            label: Text('Variables'),
-                            icon: Icon(Icons.tune),
+                            label: Text(l10n.actionPickerHubVarsTarget),
+                            icon: const Icon(Icons.tune),
                           ),
                         ],
                         selected: {hubOutputBank},
@@ -351,18 +351,15 @@ Future<ScenarioAction?> showAddActionSheet(
                           final m = module;
                           if (m == null) return Text(l10n.actionPickerNoOutputs);
                           if (m.virtualTags.isEmpty) {
-                            return Text(
-                                'No variables cached for ${m.name}. Open its '
-                                'control screen and refresh to load the vio '
-                                'tags.');
+                            return Text(l10n.actionPickerNoVariables(m.name));
                           }
                           if (tagIndex < 0 || tagIndex >= m.virtualTags.length) {
                             tagIndex = 0;
                           }
                           return DropdownButtonFormField<int>(
                             initialValue: tagIndex,
-                            decoration: const InputDecoration(
-                                labelText: 'Variable'),
+                            decoration: InputDecoration(
+                                labelText: l10n.actionPickerVariableLabel),
                             items: [
                               for (var t = 0; t < m.virtualTags.length; t++)
                                 DropdownMenuItem(
@@ -377,8 +374,8 @@ Future<ScenarioAction?> showAddActionSheet(
                         const SizedBox(height: 12),
                         TextFormField(
                           initialValue: tagValue,
-                          decoration:
-                              const InputDecoration(labelText: 'Value'),
+                          decoration: InputDecoration(
+                              labelText: l10n.actionPickerValueLabel),
                           onChanged: (v) => tagValue = v,
                         ),
                       ] else
@@ -507,7 +504,7 @@ Future<ScenarioAction?> showAddActionSheet(
                           ButtonSegment(
                               value: 'off', label: Text(l10n.off)),
                           ButtonSegment(
-                              value: 'pulse', label: Text('Pulse')),
+                              value: 'pulse', label: Text(l10n.pulse)),
                         ],
                         selected: {hubActionPulse ? 'pulse' : turnOn ? 'on' : 'off'},
                         onSelectionChanged: (s) => setSheetState(() {

@@ -513,7 +513,15 @@
   "actionPickerState": "State",
   "actionPickerSave": "Save",
   "actionPickerAdd": "Add action",
+  "actionPickerHubModbusTarget": "Modbus",
+  "actionPickerHubVarsTarget": "Vars",
+  "actionPickerVariableLabel": "Variable",
+  "actionPickerValueLabel": "Value",
+  "actionPickerNoVariables": "No variables cached for {module}. Open its control screen and refresh to load the vio tags.",
+  "@actionPickerNoVariables": {"placeholders": {"module": {"type": "String"}}},
   "pulse": "Pulse",
+
+  "hubVirtualTagsTitle": "Virtual tags (vio)",
 
   "cwConfirm": "Confirm",
   "cwModuleInfo": "Edit module info",

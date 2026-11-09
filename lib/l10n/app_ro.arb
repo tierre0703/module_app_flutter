@@ -477,7 +477,15 @@
   "actionPickerState": "Stare",
   "actionPickerSave": "Salvează",
   "actionPickerAdd": "Adaugă acțiune",
+  "actionPickerHubModbusTarget": "Modbus",
+  "actionPickerHubVarsTarget": "Var.",
+  "actionPickerVariableLabel": "Variabilă",
+  "actionPickerValueLabel": "Valoare",
+  "actionPickerNoVariables": "Nu există variabile în cache pentru {module}. Deschide ecranul de control al modulului și reîmprospătează pentru a încărca tag-urile vio.",
+  "@actionPickerNoVariables": {"placeholders": {"module": {"type": "String"}}},
   "pulse": "Puls",
+
+  "hubVirtualTagsTitle": "Etichete virtuale (vio)",
 
   "cwConfirm": "Confirmă",
   "cwModuleInfo": "Editează informații modul",

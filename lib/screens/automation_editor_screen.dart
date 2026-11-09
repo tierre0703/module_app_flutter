@@ -414,11 +414,11 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                   segments: [
                     ButtonSegment(
                         value: 'output',
-                        label: Text('Output'),
+                        label: Text(l10n.actionPickerOutputTarget),
                         icon: const Icon(Icons.output_outlined)),
                     ButtonSegment(
                         value: 'modbus',
-                        label: Text('Modbus Output'),
+                        label: Text(l10n.actionPickerHubModbusTarget),
                         icon: const Icon(Icons.electrical_services)),
                   ],
                   selected: {_watchIsHubModbus ? 'modbus' : 'output'},
@@ -518,7 +518,7 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                       ButtonSegment(
                           value: 'off', label: Text(l10n.automationTurnsOff)),
                       ButtonSegment(
-                          value: 'pulse', label: Text('Pulse')),
+                          value: 'pulse', label: Text(l10n.pulse)),
                     ],
                     selected: {_deviceTurnsOn ? 'on' : 'off'},
                     onSelectionChanged: (s) => setState(() {
