@@ -35,9 +35,14 @@ Future<ScenarioAction?> showAddActionSheet(
   // enabled inputs are offered here.
   final List<DeviceModule> inputModules =
       modules.where((m) => _enabledInputs(m.inputs).isNotEmpty).toList();
+  // Modules with cached hub virtual tags count as targets too (a freshly
+  // probed Hub may show them before its first dashboard sync fills the
+  // channels).
   final List<DeviceModule> allModules = modules
-      .where(
-          (m) => m.channels.isNotEmpty || _enabledInputs(m.inputs).isNotEmpty)
+      .where((m) =>
+          m.channels.isNotEmpty ||
+          _enabledInputs(m.inputs).isNotEmpty ||
+          m.virtualTags.isNotEmpty)
       .toList();
   // A module's position is its index in the full fleet, not in the filtered
   // [allModules] list: `indexOf` on the sublist would break whenever a module
@@ -95,19 +100,21 @@ Future<ScenarioAction?> showAddActionSheet(
       // the output bank decides which physical list to target.
       if (module != null) {
         final m = module!;
-        channelIndex = _resolveChannelIndex(m, initial);
-        if (channelIndex < 0 && m.channels.isNotEmpty && outputModules.isNotEmpty) {
-          selectModule(outputModules.first);
-          channelIndex = _resolveChannelIndex(m, initial);
-        }
         if (initial.hubOutputBank == HubOutputBank.variables) {
-          // Variables target: no channel is involved; wire the vio tag by
-          // its stored name (unknown names fall back to the first tag).
+          // Variables target: no channel is involved and the output fallback
+          // below must not run — it would switch the dialog to the fleet's
+          // first output module, losing the hub (showing wrong values in the
+          // edited action). Wire the vio tag by its stored name instead;
+          // names no longer cached fall back to the first tag in the UI.
           channelIndex = -1;
           if (initial.hubVariableTag.isNotEmpty) {
             tagIndex = m.virtualTags
                 .indexWhere((t) => t.tagName == initial.hubVariableTag);
           }
+        } else {
+          channelIndex = _resolveChannelIndex(m, initial);
+          // A channel that no longer resolves stays on the hub: the bank
+          // dropdown below auto-corrects to the bank's first output.
         }
       }
       hubOutputBank = initial.hubOutputBank;
