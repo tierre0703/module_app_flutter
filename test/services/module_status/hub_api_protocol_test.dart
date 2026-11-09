@@ -98,32 +98,39 @@ class _FakeHub {
           ],
         },
       'get_tag_group' when params['group'] == 'vio' => {
-          'group': 'vio',
-          'name': 'Virtual Tags',
-          'kind': 'builtin',
+          // Deployed shape: group metadata nested under `group`, values
+          // beside it in `tags`, `tag` fully qualified (doc shape is flat).
+          'group': {
+            'group': 'vio',
+            'tag_name': 'vio',
+            'name': 'Virtual tags',
+            'kind': 'virtual',
+            'modbus': null,
+            'tag_count': 3,
+          },
           'tags': [
             {
-              'tag': 'tag_1',
+              'tag': 'vio.tag_1',
               'tag_name': 'tag_1',
               'group': 'vio',
               'category': 'virtual',
               'name': 'Tag 1',
               'value': '100',
-              'parameters': {},
+              'parameters': {'id': 6},
             },
             {
-              'tag': 'Var_2',
+              'tag': 'vio.Var_2',
               'tag_name': 'Var_2',
               'group': 'vio',
               'category': 'virtual',
               'name': '',
               'value': 'on',
-              'parameters': {},
+              'parameters': {'id': 7},
             },
           ],
         },
       'get_tag_group' => {
-          'group': params['group'],
+          'group': {'group': params['group']},
           'tags': [],
         },
       'get_tag_details' => {
@@ -217,20 +224,45 @@ void main() {
 
       final group = HubTagGroupData.fromResult(groupResp.result!);
       expect(group.group, 'vio');
+      expect(group.name, 'Virtual tags');
+      expect(group.kind, 'virtual');
       expect(group.tags.length, 2);
-      expect(group.tags[0].tag, 'tag_1');
+      expect(group.tags[0].tag, 'vio.tag_1');
+      expect(group.tags[0].tagName, 'tag_1');
       expect(group.tags[0].value, '100');
       expect(group.tags[1].value, 'on');
 
       final cached = group.tags.map((r) => r.toVirtualTag()).toList();
       expect(cached.first, isA<HubVirtualTag>());
+      // The fully-qualified wire name (`vio.tag_1`) is stored without the
+      // group prefix on the cached model.
       expect(cached.first.tag, 'tag_1');
       expect(cached.first.tagName, 'tag_1');
       expect(cached.first.name, 'Tag 1');
       expect(cached.first.value, '100');
       // Empty reported labels degrade to null (UI falls back to the tag name).
       expect(cached[1].name, isNull);
+      expect(cached[1].tag, 'Var_2');
       expect(cached[1].value, 'on');
+
+      // The documented flat shape (group fields beside `tags`) still parses.
+      final flat = HubTagGroupData.fromResult({
+        'group': 'vio',
+        'name': 'Flat',
+        'kind': 'virtual',
+        'tags': [
+          {
+            'tag': 'f1',
+            'tag_name': 'f1',
+            'group': 'vio',
+            'value': '3',
+          },
+        ],
+      });
+      expect(flat.group, 'vio');
+      expect(flat.name, 'Flat');
+      expect(flat.tags.single.toVirtualTag().tag, 'f1');
+      expect(flat.tags.single.toVirtualTag().value, '3');
 
       final detailsResp = await protocol.getTagDetails('therm1.temperature');
       expect(detailsResp.ok, isTrue);

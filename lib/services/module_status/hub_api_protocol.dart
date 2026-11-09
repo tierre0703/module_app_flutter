@@ -278,12 +278,21 @@ class HubTagRecord {
 
   /// Maps a `vio` group record onto the cached [HubVirtualTag] hub
   /// information model ([DeviceModule.virtualTags]).
-  HubVirtualTag toVirtualTag() => HubVirtualTag(
-        tag: tag,
-        tagName: tagName,
-        name: (name == null || name!.isEmpty) ? null : name,
-        value: value,
-      );
+  ///
+  /// The hub reports `tag` as the fully-qualified reference (`vio.tag_1`)
+  /// while `tag_name` is the stored name: the group prefix is stripped so the
+  /// cached [HubVirtualTag.tag] holds the bare stored tag name.
+  HubVirtualTag toVirtualTag() {
+    final prefix = (group == null || group!.isEmpty) ? '' : '${group!}.';
+    final storedName =
+        tag.startsWith(prefix) ? tag.substring(prefix.length) : tag;
+    return HubVirtualTag(
+      tag: storedName.isEmpty ? tagName : storedName,
+      tagName: tagName,
+      name: (name == null || name!.isEmpty) ? null : name,
+      value: value,
+    );
+  }
 }
 
 /// Group catalogue response from `get_tag_group`: the group metadata plus
@@ -301,22 +310,46 @@ class HubTagGroupData {
     this.tags = const [],
   });
 
-  /// Tolerant to the hub returning a bare tag list or a group-metadata object
-  /// holding the tags under `tags`/`items`.
+  /// Tolerant to the deployed hub shape, which nests the group metadata
+  /// object inside `group` next to `tags`, and to the documented flat shapes
+  /// (a bare tag list, or the tags under `tags`/`items` in the result itself).
   factory HubTagGroupData.fromResult(Object? result) {
-    final metadata = <String, dynamic>{};
+    String? group;
+    String? name;
+    String? kind;
     List<dynamic>? rawTags;
     if (result is List) {
       rawTags = result;
     } else if (result is Map) {
-      metadata.addAll(Map<String, dynamic>.from(result));
-      final raw = metadata.remove('tags') ?? metadata.remove('items');
+      final map = Map<String, dynamic>.from(result);
+      // The real hub nests the group metadata under `group` (an object
+      // containing `group`, `name`, `kind`, `tag_count`, ...) with the tag
+      // values beside it in `tags`; `HubTagGroupInfo`-style flat shapes
+      // (`tags`/`items` directly in the result or a bare list) are
+      // accepted as well.
+      final nested = map.remove('group');
+      if (nested is Map) {
+        final nestedMap = Map<String, dynamic>.from(nested);
+        final nestedGroup = nestedMap['group'];
+        if (nestedGroup is String) group = nestedGroup;
+        final nestedName = nestedMap['name'];
+        if (nestedName is String) name = nestedName;
+        final nestedKind = nestedMap['kind'];
+        if (nestedKind is String) kind = nestedKind;
+      } else if (nested is String) {
+        group = nested;
+      }
+      final mapName = map.remove('name');
+      if (mapName is String && name == null) name = mapName;
+      final mapKind = map.remove('kind');
+      if (mapKind is String && kind == null) kind = mapKind;
+      final raw = map.remove('tags') ?? map.remove('items');
       if (raw is List) rawTags = raw;
     }
     return HubTagGroupData(
-      group: metadata['group'] as String?,
-      name: metadata['name'] as String?,
-      kind: metadata['kind'] as String?,
+      group: group,
+      name: name,
+      kind: kind,
       tags: [
         for (final t in rawTags ?? const [])
           if (t is Map) HubTagRecord.fromJson(Map<String, dynamic>.from(t)),
