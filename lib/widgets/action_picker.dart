@@ -57,7 +57,11 @@ Future<ScenarioAction?> showAddActionSheet(
   // Hub Variables target: the picked `vio` virtual tag (by index into the
   // module's cached [DeviceModule.virtualTags]) and the value to write.
   int tagIndex = -1;
-  String tagValue = '';
+  // Value written with a Variables action; "0" is the sensible default, also
+  // fallback for legacy actions saved with a blank value.
+  String tagValue = (initial?.hubVariableValue.isNotEmpty ?? false)
+      ? initial!.hubVariableValue
+      : '0';
   // Track whether the initial action is hub-based so we can branch
   // before module is resolved.
   final bool initialIsHubAction = initial?.isHubAction ?? false;
@@ -108,7 +112,6 @@ Future<ScenarioAction?> showAddActionSheet(
       }
       hubOutputBank = initial.hubOutputBank;
       hubActionPulse = initial.hubActionPulse;
-      tagValue = initial.hubVariableValue;
     } else {
       if (module != null) {
         final m = module!;

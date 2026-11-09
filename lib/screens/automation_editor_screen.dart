@@ -418,7 +418,7 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                         icon: const Icon(Icons.output_outlined)),
                     ButtonSegment(
                         value: 'modbus',
-                        label: Text('Modbus'),
+                        label: Text('Modbus Output'),
                         icon: const Icon(Icons.electrical_services)),
                   ],
                   selected: {_watchIsHubModbus ? 'modbus' : 'output'},
