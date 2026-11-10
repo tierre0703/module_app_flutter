@@ -32,7 +32,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import '../../core/config/env.dart';
 import '../../core/soleux/soleux_json_protocol.dart';
+import '../../core/soleux/soleux_tls.dart';
 import '../../models/models.dart';
 import '../module_store.dart';
 import '../module_host_resolver.dart';
@@ -257,7 +259,7 @@ class ModuleApiHealthService {
   /// unreachable - the caller reports offline).
   Future<bool?> _transientHello(DeviceModule module) async {
     final port = module.controlApiPort;
-    final Socket? socket = await _openSocket(module.host, port);
+    final Socket? socket = await _openSocket(module);
     if (socket == null) return null;
     try {
       socket.setOption(SocketOption.tcpNoDelay, true);
@@ -287,22 +289,23 @@ class ModuleApiHealthService {
   /// is not blocked behind a slow periodic tick.
   Future<void> kick() => checkAll();
 
-  /// Opens a TCP socket to [host]:[port]. [host] is normally a module's cached
-  /// endpoint ([DeviceModule.host]), i.e. an IP literal; a hostname is still
-  /// accepted (resolved IPv4-first, each address tried) as a fallback when no
-  /// cached IP exists. Returns null when no address could be reached.
-  Future<Socket?> _openSocket(String host, int port) => connectModuleSocket(
-        host,
-        port,
+  /// Opens a TCP (or TLS, per the module's `API_TLS` advisory / the
+  /// code-level switch) socket to [module]'s Control API port. Returns null
+  /// when no address could be reached or the TLS handshake failed (fail
+  /// closed, no plaintext fallback for an API_TLS module).
+  Future<Socket?> _openSocket(DeviceModule module) => connectModuleSocket(
+        module.host,
+        module.controlApiPort,
         timeout: timeout,
         debugTag: 'ModuleApiHealthService',
+        tls: moduleTlsOptions(module, forced: Env.config.apiTlsEnabled),
       );
 
   /// True when a TCP socket to the module's 5008 API port can be opened at all.
   /// Used to tell "device is gone" apart from "device is up but the API is
   /// broken".
   Future<bool> _socketReachable(DeviceModule module) async {
-    final socket = await _openSocket(module.host, module.controlApiPort);
+    final socket = await _openSocket(module);
     if (socket == null) return false;
     try {
       return true;

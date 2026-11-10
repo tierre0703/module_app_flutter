@@ -79,6 +79,18 @@ class DiscoveredModule {
   /// Highest advertised Control API version (additive, current 3).
   final int? apiVersion;
 
+  /// Advertised TLS advisory (additive, doc/Soleux_Mobile_Control_API_TLS_Integration.md):
+  /// `true` for `API_TLS:1` (the Control API port speaks TLS), `false` for the
+  /// temporary plaintext-migration `API_TLS:0`, `null` when the device
+  /// advertises nothing (legacy/unknown - not proof that TLS is off).
+  final bool? apiTls;
+
+  /// Advertised permanent device identity `DEVICE_ID`
+  /// (`<ModelNumber>-<SerialNumber>`, additive): the TLS certificate's DNS
+  /// SAN a 5008 TLS connection must match. Untrusted until confirmed against
+  /// trusted inventory (doc §"What the app needs").
+  final String? deviceId;
+
   /// Advertised UDP heartbeat port (additive, normally 5007). When absent the
   /// monitor uses the fixed well-known heartbeat port (5007).
   final int? advertisedHeartbeatPort;
@@ -114,6 +126,8 @@ class DiscoveredModule {
     this.mac,
     this.apiPort,
     this.apiVersion,
+    this.apiTls,
+    this.deviceId,
     this.advertisedHeartbeatPort,
     this.caps = const [],
     this.family,
@@ -158,6 +172,8 @@ class DiscoveredModule {
       mac: map['MAC'],
       apiPort: int.tryParse(map['API_PORT'] ?? ''),
       apiVersion: int.tryParse(map['API_VER'] ?? ''),
+      apiTls: _parseApiTls(map['API_TLS']),
+      deviceId: map['DEVICE_ID'],
       advertisedHeartbeatPort: int.tryParse(map['HEARTBEAT_PORT'] ?? ''),
       caps: _parseCaps(map['CAPS']),
       family: SoleuxDeviceFamilies.fromGuid(guid),
@@ -172,6 +188,15 @@ class DiscoveredModule {
       for (final part in raw.split(','))
         if (part.trim().isNotEmpty) part.trim().toLowerCase(),
     ];
+  }
+
+  /// Parses the additive `API_TLS` advisory: `1` => true, `0` => false, any
+  /// other/absent value => null (legacy/unknown). Forward-compatible with a
+  /// future richer TLS indicator.
+  static bool? _parseApiTls(String? raw) {
+    final value = int.tryParse(raw ?? '');
+    if (value == null) return null;
+    return value != 0;
   }
 }
 
@@ -199,6 +224,8 @@ class ModuleDiscovery {
     'API_PORT',
     'HEARTBEAT_PORT',
     'API_VER',
+    'API_TLS',
+    'DEVICE_ID',
   ];
 
   /// Legacy global broadcast address; sent alongside per-subnet broadcasts.

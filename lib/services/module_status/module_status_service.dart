@@ -34,8 +34,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/logger/network_debug_logger.dart';
+import '../../core/config/env.dart';
 import '../../core/soleux/soleux_device_event.dart';
 import '../../core/soleux/soleux_json_protocol.dart';
+import '../../core/soleux/soleux_tls.dart';
 import '../../models/models.dart';
 import '../module_store.dart';
 import '../settings_store.dart';
@@ -212,6 +214,13 @@ class ModuleStatusService {
   /// picked HTTP/HTTPS in Settings).
   static CommandTransportMode _defaultCommandTransport() =>
       SettingsStore.shared.commandTransport;
+
+  /// TLS dial options for [module]'s Control API port, or null to keep the
+  /// channel plaintext. Driven by the module's discovery-advertised
+  /// `API_TLS` flag unless the code-level `AppConfig.apiTlsEnabled` switch
+  /// forces it (doc/Soleux_Mobile_Control_API_TLS_Integration.md).
+  SoleuxTlsOptions? _tlsOptions(DeviceModule module) =>
+      moduleTlsOptions(module, forced: Env.config.apiTlsEnabled);
 
   /// Shared service wired to the shared store, used by the launch path.
   static ModuleStatusService? _shared;
@@ -394,6 +403,7 @@ class ModuleStatusService {
     final connection = ModuleTcpConnection(
       host: live.host,
       port: live.controlApiPort,
+      tls: _tlsOptions(live),
       timeout: const Duration(seconds: 5),
     );
     final protocol = HubJsonProtocol(connection);
@@ -455,6 +465,7 @@ class ModuleStatusService {
     final connection = ModuleTcpConnection(
       host: live.host,
       port: live.controlApiPort,
+      tls: _tlsOptions(live),
       timeout: const Duration(seconds: 5),
     );
     final protocol = HubJsonProtocol(connection);
@@ -884,7 +895,9 @@ class ModuleStatusService {
     // shares the app's normal session; only fall back to a one-shot socket
     // when no unit exists for the module.
     final unit = _ensureJsonUnit(module,
-        port: module.controlApiPort, framing: SoleuxJsonFraming.controlApi);
+        port: module.controlApiPort,
+        framing: SoleuxJsonFraming.controlApi,
+        tls: _tlsOptions(module));
     try {
       await unit.connect();
       if (!unit.isConnected) return null;
@@ -1219,6 +1232,7 @@ class ModuleStatusService {
         module.controlApiPort,
         timeout: timeout,
         debugTag: 'ModuleStatusService',
+        tls: _tlsOptions(module),
       );
       if (socket == null) return false;
       socket.setOption(SocketOption.tcpNoDelay, true);
@@ -1447,7 +1461,9 @@ class ModuleStatusService {
   Future<bool?> _probeSoleuxJson(DeviceModule live) async {
     final controlPort = live.controlApiPort;
     final controlUnit = _ensureJsonUnit(live,
-        port: controlPort, framing: SoleuxJsonFraming.controlApi);
+        port: controlPort,
+        framing: SoleuxJsonFraming.controlApi,
+        tls: _tlsOptions(live));
     final controlOk = await _tryJsonHello(controlUnit, live);
     if (controlOk == true) {
       await _fetchRelayConfiguration(controlUnit, live);
@@ -1531,6 +1547,7 @@ class ModuleStatusService {
     final connection = ModuleTcpConnection(
       host: live.host,
       port: live.controlApiPort,
+      tls: _tlsOptions(live),
       timeout: const Duration(seconds: 5),
     );
     final protocol = HubJsonProtocol(connection);
@@ -1794,11 +1811,14 @@ class ModuleStatusService {
   /// channel state and its connect/disconnect transitions flip the online
   /// status.
   SoleuxJsonService _ensureJsonUnit(DeviceModule module,
-      {required int port, required SoleuxJsonFraming framing}) {
+      {required int port, required SoleuxJsonFraming framing,
+      SoleuxTlsOptions? tls}) {
     final existing = _jsonUnits[module.id];
     if (existing is SoleuxJsonService &&
         existing.connection.port == port &&
-        existing.framing == framing) {
+        existing.framing == framing &&
+        existing.connection.tls?.caAsset == tls?.caAsset &&
+        existing.connection.tls?.expectedDeviceId == tls?.expectedDeviceId) {
       return existing;
     }
     if (existing != null) existing.dispose();
@@ -1807,6 +1827,7 @@ class ModuleStatusService {
       connection: ModuleTcpConnection(
         host: module.host,
         port: port,
+        tls: tls,
         timeout: timeout,
       ),
       framing: framing,
@@ -1816,18 +1837,21 @@ class ModuleStatusService {
     return unit;
   }
 
-  /// Gets the persistent Control API unit for [module] per the app's configured
-  /// transport: a [SoleuxJsonService] over the Control API TCP port in TCP
-  /// mode, or a [SoleuxHttpService] on the HTTP/HTTPS command endpoint.
-  /// Switching the Settings transport while the app runs replaces the existing
-  /// unit on the next refresh.
+  /// Gets the persistent Control API unit for [module] per the app's
+  /// configured transport: a [SoleuxJsonService] over the Control API TCP port
+  /// (plaintext or TLS per the module's `API_TLS` flag, see
+  /// [SoleuxTlsOptions]) in TCP mode, or a [SoleuxHttpService] on the
+  /// HTTP/HTTPS command endpoint. Switching the Settings transport while the
+  /// app runs replaces the existing unit on the next refresh.
   SoleuxControlApiService _ensureControlApiUnit(DeviceModule module) {
     final mode = _commandTransport();
     if (mode != CommandTransportMode.tcp) {
       return _ensureHttpUnit(module, mode);
     }
     return _ensureJsonUnit(module,
-        port: module.controlApiPort, framing: SoleuxJsonFraming.controlApi);
+        port: module.controlApiPort,
+        framing: SoleuxJsonFraming.controlApi,
+        tls: _tlsOptions(module));
   }
 
   /// Gets the persistent HTTP/HTTPS Control API unit for [module]

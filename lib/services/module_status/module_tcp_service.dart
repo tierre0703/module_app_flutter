@@ -19,11 +19,18 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import '../../core/logger/network_debug_logger.dart';
+import '../../core/soleux/soleux_tls.dart';
 import '../module_host_resolver.dart';
 
 class ModuleTcpConnection {
   final String host;
   final int port;
+
+  /// TLS dial options (doc/Soleux_Mobile_Control_API_TLS_Integration.md):
+  /// null dials plaintext; non-null upgrades the 5008 control channel to
+  /// TLS 1.2+ with ALPN `soleux-json`. A TLS failure never falls back to
+  /// plaintext (doc §"Connection sequence" step 2).
+  final SoleuxTlsOptions? tls;
   final Duration _timeout;
   final Duration _reconnectDelay;
   static const int _maxReconnectAttempts = 10;
@@ -49,11 +56,17 @@ class ModuleTcpConnection {
   Stream<bool> get connectionStateStream => _stateController.stream;
 
   bool get isConnected => _isConnected;
-  String get key => '$host:$port';
+  String get key => '$host:$port${tls != null ? '+tls' : ''}';
+
+  /// Whether this connection dials with TLS (used to replace a unit whose
+  /// transport switched between plaintext and TLS, e.g. after an
+  /// `API_TLS`/settings change).
+  bool get usesTls => tls != null;
 
   ModuleTcpConnection({
     required this.host,
     required this.port,
+    this.tls,
     Duration timeout = const Duration(seconds: 10),
     Duration reconnectDelay = const Duration(seconds: 3),
   })  : _timeout = timeout,
@@ -81,6 +94,7 @@ class ModuleTcpConnection {
         port,
         timeout: _timeout,
         debugTag: 'ModuleTCP $key',
+        tls: tls,
       );
       if (socket == null) {
         debugPrint('ModuleTCP $key connect failed: no reachable address');

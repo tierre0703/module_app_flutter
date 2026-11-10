@@ -9,8 +9,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
+import '../core/config/env.dart';
 import '../core/logger/app_logger.dart';
 import '../core/soleux/soleux_device_event.dart';
+import '../core/soleux/soleux_tls.dart';
 import '../models/models.dart';
 import '../services/event_log_store.dart';
 import '../services/module_status/hub_api_protocol.dart';
@@ -135,6 +137,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
     final connection = ModuleTcpConnection(
       host: host,
       port: port,
+      tls: moduleTlsOptions(module, forced: Env.config.apiTlsEnabled),
       timeout: const Duration(seconds: 5),
     );
     _hubClient = HubJsonProtocol(connection);

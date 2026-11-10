@@ -199,6 +199,8 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
       mac: discovered.mac,
       apiPort: discovered.apiPort,
       apiVersion: discovered.apiVersion,
+      apiTls: discovered.apiTls,
+      deviceId: discovered.deviceId,
       heartbeatPort: discovered.advertisedHeartbeatPort,
       caps: discovered.caps,
       // Answering a discovery broadcast does not prove the module is still

@@ -553,6 +553,8 @@ class DeviceModule {
     this.apiPort,
     this.apiHttpPort,
     this.apiVersion,
+    this.apiTls,
+    this.deviceId,
     this.heartbeatPort,
     this.caps = const [],
     this.lastSeenAt,
@@ -606,6 +608,22 @@ class DeviceModule {
 
   /// Highest advertised/negotiated Control API version (current 3).
   int? apiVersion;
+
+  /// Soleux discovery `API_TLS` advisory
+  /// (doc/Soleux_Mobile_Control_API_TLS_Integration.md): `true` when the
+  /// device advertised `API_TLS:1` (its Control API port speaks TLS 1.2+),
+  /// `false` for the temporary plaintext-migration mode, `null` when the
+  /// field was absent (legacy/unknown - **not** proof that TLS is off; the
+  /// current migration default is plaintext).
+  bool? apiTls;
+
+  /// Expected TLS certificate identity: the permanent device ID
+  /// (`<ModelNumber>-<SerialNumber>`) as advertised by discovery
+  /// (`DEVICE_ID`) and confirmed against trusted inventory. The Hub
+  /// certificate carries it as its **DNS SAN** (no IP SAN), so a TLS
+  /// connection by IP re-checks it manually (doc §"Recommended transport").
+  /// Used by the 5008 TLS command channel; null keeps TLS fail-closed.
+  String? deviceId;
 
   /// Advertised UDP heartbeat port (normally 5007). Null means the monitor
   /// uses the fixed well-known heartbeat port (5007).
@@ -687,6 +705,8 @@ class DeviceModule {
         'apiPort': apiPort,
         'apiHttpPort': apiHttpPort,
         'apiVersion': apiVersion,
+        'apiTls': apiTls,
+        'deviceId': deviceId,
         'heartbeatPort': heartbeatPort,
         'caps': caps,
         'lastSeenAt': lastSeenAt?.toIso8601String(),
@@ -715,6 +735,8 @@ class DeviceModule {
         apiPort: (json['apiPort'] as num?)?.toInt(),
         apiHttpPort: (json['apiHttpPort'] as num?)?.toInt(),
         apiVersion: (json['apiVersion'] as num?)?.toInt(),
+        apiTls: json['apiTls'] as bool?,
+        deviceId: json['deviceId'] as String?,
         heartbeatPort: (json['heartbeatPort'] as num?)?.toInt(),
         caps: [
           for (final c in json['caps'] as List? ?? const []) c as String,
