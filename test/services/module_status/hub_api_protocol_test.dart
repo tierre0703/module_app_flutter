@@ -34,6 +34,13 @@ class _FakeHub {
 
   int get port => server.port;
 
+  /// Whether the fake enforces the TLS login contract: the first request on
+  /// a session must be `authenticate`, everything else answers
+  /// `authentication_required` (doc/Soleux_Mobile_Control_API_TLS_Integration.md
+  /// §"Login and commands").
+  bool requireAuth = false;
+  bool _authenticated = false;
+
   void _handle(Socket socket) {
     final buffer = StringBuffer();
     socket.listen((bytes) {
@@ -61,6 +68,34 @@ class _FakeHub {
     final id = request['id'];
     final action = request['action'];
     final params = request['params'] as Map<String, dynamic>;
+
+    if (action == 'authenticate') {
+      _authenticated = params['username'] == 'admin' &&
+          params['password'] == 'secret';
+      socket.write(
+          '${jsonEncode({
+            'protocol': 1,
+            'id': id,
+            'ok': _authenticated,
+            if (_authenticated)
+              'result': {'authenticated': true}
+            else
+              'error': 'invalid_credentials',
+          })}\r\n');
+      return;
+    }
+    if (requireAuth && !_authenticated) {
+      socket.write(
+          '${jsonEncode({
+            'protocol': 1,
+            'id': id,
+            'ok': false,
+            'error': 'authentication_required',
+            'message': 'Authenticate before sending control commands.',
+          })}\r\n');
+      return;
+    }
+
     final result = switch (action) {
       'hello' => {
           'protocol': 1,
@@ -162,6 +197,39 @@ Future<(HubJsonProtocol, StreamSubscription<String>, ModuleTcpConnection)>
 }
 
 void main() {
+  test('authenticate performs the TLS login contract and clears the '
+      'auth-required flag', () async {
+    final hub = await _FakeHub.start();
+    hub.requireAuth = true;
+    final (protocol, pump, connection) = await _openSession(hub);
+    try {
+      // A command before login is rejected and flips the flag.
+      final denied = await protocol.hello();
+      expect(denied.ok, isFalse);
+      expect(denied.error, 'authentication_required');
+      expect(protocol.authenticationRequired, isTrue);
+
+      // A wrong password is rejected (and the fake keeps denying commands).
+      final bad = await protocol.authenticate('admin', 'wrong');
+      expect(bad.ok, isFalse);
+      expect(bad.error, 'invalid_credentials');
+
+      // The correct admin credentials authenticate the session.
+      final good = await protocol.authenticate('admin', 'secret');
+      expect(good.ok, isTrue);
+      expect(good.result!['authenticated'], isTrue);
+      expect(protocol.authenticationRequired, isFalse);
+
+      // Commands work again on the authenticated session.
+      final hello = await protocol.hello();
+      expect(hello.ok, isTrue);
+    } finally {
+      await pump.cancel();
+      protocol.dispose();
+      hub.server.close();
+    }
+  });
+
   test('set_output completes when the data stream is wired to feed()',
       () async {
     final hub = await _FakeHub.start();

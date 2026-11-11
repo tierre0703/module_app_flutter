@@ -54,6 +54,7 @@ import 'soleux_http_service.dart';
 import 'soleux_json_fetcher.dart';
 import 'soleux_json_service.dart';
 import 'hub_api_protocol.dart';
+import '../hub_credential_store.dart';
 
 /// Formats a [DateTime] for the device's system-log filters
 /// (`log_from`/`log_to`, `YYYY-MM-DD HH:MM:SS`).
@@ -221,6 +222,35 @@ class ModuleStatusService {
   /// forces it (doc/Soleux_Mobile_Control_API_TLS_Integration.md).
   SoleuxTlsOptions? _tlsOptions(DeviceModule module) =>
       moduleTlsOptions(module, forced: Env.config.apiTlsEnabled);
+
+  /// Authenticates [protocol] on a fresh TLS Hub session with the stored
+  /// Hub admin credentials (doc §"Login and commands": the first request on
+  /// a raw TLS JSON session must be `authenticate`).
+  ///
+  /// Returns false when no credentials are saved or the login was rejected -
+  /// never retried in a loop (the Hub locks accounts after repeated
+  /// failures). Credential values are never logged.
+  Future<bool> _authenticateHub(
+      HubJsonProtocol protocol, DeviceModule module) async {
+    final credentials = await HubCredentialStore.shared.load(module.id);
+    if (credentials == null) {
+      debugPrint('ModuleStatusService: no stored Hub credentials for '
+          '${module.name} (${module.id}); hub login required');
+      return false;
+    }
+    try {
+      final response =
+          await protocol.authenticate(credentials.username, credentials.password);
+      if (response.ok) return true;
+      debugPrint('ModuleStatusService: Hub login rejected for '
+          '${module.name} (${module.id}): ${response.error ?? 'login failed'}');
+      return false;
+    } catch (e, st) {
+      debugPrint('ModuleStatusService: Hub login failed for '
+          '${module.name} (${module.id}): $e\n$st');
+      return false;
+    }
+  }
 
   /// Shared service wired to the shared store, used by the launch path.
   static ModuleStatusService? _shared;
@@ -415,6 +445,12 @@ class ModuleStatusService {
       pump = connection.dataStream.listen(protocol.feed);
       await connection.connect();
       if (!connection.isConnected) return false;
+      // A TLS Hub session must authenticate before any command (doc
+      // §"Login and commands"). Without stored credentials the dispatch
+      // fails cleanly instead of hammering an unauthenticated session.
+      if (connection.usesTls && !await _authenticateHub(protocol, live)) {
+        return false;
+      }
       if (modbusBank && pulse) {
         final onResp = await protocol.setModbusOutput(bankChannel, true);
         if (!onResp.ok) return false;
@@ -477,6 +513,11 @@ class ModuleStatusService {
       pump = connection.dataStream.listen(protocol.feed);
       await connection.connect();
       if (!connection.isConnected) return false;
+      // A TLS Hub session must authenticate before any command (doc
+      // §"Login and commands").
+      if (connection.usesTls && !await _authenticateHub(protocol, live)) {
+        return false;
+      }
       final wireTag = tag.startsWith('vio.') ? tag : 'vio.${tag.trim()}';
       final response = await protocol.setTag(wireTag, value);
       if (response.ok) {
@@ -1561,8 +1602,22 @@ class ModuleStatusService {
         return;
       }
 
+      // A TLS Hub session must authenticate before any command (doc
+      // §"Login and commands"). Without stored credentials the probe still
+      // proves reachability: the API answered over TLS, only the hub login
+      // is missing.
+      if (connection.usesTls) {
+        await _authenticateHub(protocol, live);
+      }
+
       final hello = await protocol.hello();
       if (!hello.ok) {
+        if (protocol.authenticationRequired) {
+          debugPrint('ModuleStatusService: hub ${live.name} (${live.id}) is '
+              'reachable; hub login required');
+          _applyReachability(live, alive: true);
+          return;
+        }
         _applyReachability(live, alive: false);
         return;
       }

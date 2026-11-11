@@ -406,6 +406,18 @@ class _ParseResult {
 class HubJsonProtocol {
   final ModuleTcpConnection _connection;
 
+  /// True once the Hub answered a command with `authentication_required`
+  /// (doc/Soleux_Mobile_Control_API_TLS_Integration.md §"Login and
+  /// commands": on a raw TLS JSON session the FIRST request must be
+  /// `authenticate` with the Hub admin credentials; the login is cached
+  /// only for the TLS connection's lifetime). Reset by a successful
+  /// [authenticate] or a new [connect].
+  bool _authenticationRequired = false;
+
+  /// Whether the Hub is currently demanding a login (the last response was
+  /// `authentication_required`).
+  bool get authenticationRequired => _authenticationRequired;
+
   bool _greetingReceived = false;
   final Map<int, Completer<HubCommandResponse>> _pending = {};
   int _nextId = 1;
@@ -427,8 +439,12 @@ class HubJsonProtocol {
 
   HubJsonProtocol(this._connection);
 
-  /// Connects to the Hub.
-  Future<void> connect() => _connection.connect();
+  /// Connects to the Hub. A fresh connection always needs a fresh
+  /// `authenticate` (the Hub caches the login per TLS connection only).
+  Future<void> connect() async {
+    _authenticationRequired = false;
+    await _connection.connect();
+  }
 
   /// Whether the underlying TCP session is live.
   bool get isConnected => _connection.isConnected;
@@ -480,6 +496,25 @@ class HubJsonProtocol {
   Future<HubCommandResponse> hello(
           {Duration timeout = const Duration(seconds: 5)}) =>
       sendCommand('hello', const {}, timeout: timeout);
+
+  /// `authenticate` - the Hub login (doc/Soleux_Mobile_Control_API_TLS_Integration.md
+  /// §"Login and commands"): MUST be the first request on a fresh raw TLS
+  /// JSON session; credentials are the Hub's **web administrator** account
+  /// (only `admin`/`superadmin` roles may use the Control API). Success is
+  /// `ok:true` with `result.authenticated:true`; the login is cached only
+  /// for this TLS connection's lifetime. A failed login closes the
+  /// connection (and the Hub locks the account after repeated failures -
+  /// callers must never retry in a loop).
+  Future<HubCommandResponse> authenticate(String username, String password,
+      {Duration timeout = const Duration(seconds: 5)}) async {
+    final response = await sendCommand(
+      'authenticate',
+      {'username': username, 'password': password},
+      timeout: timeout,
+    );
+    if (response.ok) _authenticationRequired = false;
+    return response;
+  }
 
   /// `get_device_info` - Hub identity and firmware details.
   Future<HubCommandResponse> getDeviceInfo() =>
@@ -624,6 +659,9 @@ class HubJsonProtocol {
 
       // Command response: match by id to pending completer.
       final response = HubCommandResponse.fromJson(map);
+      if (!response.ok && response.error == 'authentication_required') {
+        _authenticationRequired = true;
+      }
       final completer = _pending.remove(response.id);
       if (completer != null && !completer.isCompleted) {
         completer.complete(response);

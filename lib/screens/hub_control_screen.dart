@@ -15,6 +15,7 @@ import '../core/soleux/soleux_device_event.dart';
 import '../core/soleux/soleux_tls.dart';
 import '../models/models.dart';
 import '../services/event_log_store.dart';
+import '../services/hub_credential_store.dart';
 import '../services/module_status/hub_api_protocol.dart';
 import '../services/module_status/module_tcp_service.dart';
 import '../services/module_store.dart';
@@ -40,6 +41,16 @@ class _HubControlScreenState extends State<HubControlScreen> {
   bool _editDialogOpen = false;
   StreamSubscription<SoleuxDeviceEvent>? _eventSubscription;
   StreamSubscription<String>? _dataSubscription;
+
+  /// True when the Hub demanded a login (`authentication_required` - the TLS
+  /// login contract, doc/Soleux_Mobile_Control_API_TLS_Integration.md
+  /// §"Login and commands"): control commands are not sent until the user
+  /// signs in, so an unauthenticated session is never polled.
+  bool _needsLogin = false;
+
+  /// The last hub login failure shown in the login card/dialog. Never
+  /// contains credentials.
+  String? _loginError;
 
   /// True while [_connectAndRefresh] is in flight, so a concurrent refresh
   /// does not stack a second client/connection on top of the first (the
@@ -182,27 +193,19 @@ class _HubControlScreenState extends State<HubControlScreen> {
       }
       _offline = false;
 
-      final hello = await hubClient.hello();
-      if (!hello.ok) {
-        _offline = true;
+      // TLS Hub login (doc §"Login and commands"): the first request on a
+      // fresh TLS session must be `authenticate`. Without stored (or newly
+      // entered) credentials the screen shows the login card and does not
+      // poll control commands on the unauthenticated session.
+      if (connection.usesTls &&
+          !await _loginWithStoredCredentials(hubClient)) {
+        _needsLogin = true;
         if (mounted) setState(() {});
         return;
       }
+      _needsLogin = false;
 
-      final infoResp = await hubClient.getDeviceInfo();
-      if (infoResp.ok && infoResp.result != null) {
-        _deviceInfo = HubDeviceInfo.fromResult(infoResp.result!);
-        final hubName = _deviceInfo!.name;
-        if (hubName != null && hubName.isNotEmpty) {
-          ModuleStore.shared.update(module.id, (m) {
-            m.name = hubName;
-          });
-        }
-      }
-
-      await _fetchVirtualTags();
-
-      await _fetchDashboard();
+      await _loadHubData(hubClient, module);
 
       if (mounted) setState(() {});
     } catch (e, st) {
@@ -212,6 +215,66 @@ class _HubControlScreenState extends State<HubControlScreen> {
     } finally {
       _connecting = false;
     }
+  }
+
+  /// Authenticates [hubClient] with the stored Hub admin credentials.
+  /// Returns true when the session is authenticated; false when no
+  /// credentials are saved or the Hub rejected them (never retried in a
+  /// loop - the Hub locks accounts after repeated failures). Credential
+  /// values never reach the logs.
+  Future<bool> _loginWithStoredCredentials(HubJsonProtocol hubClient) async {
+    final module =
+        ModuleStore.shared.byId(widget.module.id) ?? widget.module;
+    final credentials = await HubCredentialStore.shared.load(module.id);
+    if (credentials == null) return false;
+    try {
+      final response = await hubClient.authenticate(
+          credentials.username, credentials.password);
+      if (response.ok) {
+        _loginError = null;
+        return true;
+      }
+      _loginError =
+          'The Hub rejected the saved credentials (${response.error ?? 'login failed'}). Sign in again.';
+      return false;
+    } catch (e, st) {
+      debugPrint('HubControlScreen: stored-credential login failed: $e\n$st');
+      _loginError = 'Login failed: could not reach the Hub login.';
+      return false;
+    }
+  }
+
+  /// The shared hello / device-info / tag-catalogue / dashboard pass run
+  /// after a successful (stored or interactive) hub login.
+  Future<void> _loadHubData(
+      HubJsonProtocol hubClient, DeviceModule module) async {
+    final hello = await hubClient.hello();
+    if (!hello.ok) {
+      if (hubClient.authenticationRequired) {
+        _needsLogin = true;
+      } else {
+        _offline = true;
+      }
+      if (mounted) setState(() {});
+      return;
+    }
+
+    final infoResp = await hubClient.getDeviceInfo();
+    if (infoResp.ok && infoResp.result != null) {
+      _deviceInfo = HubDeviceInfo.fromResult(infoResp.result!);
+      final hubName = _deviceInfo!.name;
+      if (hubName != null && hubName.isNotEmpty) {
+        ModuleStore.shared.update(module.id, (m) {
+          m.name = hubName;
+        });
+      }
+    }
+
+    await _fetchVirtualTags();
+
+    await _fetchDashboard();
+
+    if (mounted) setState(() {});
   }
 
   /// Fetches the `vio` virtual-tag group from the read-only hub tag catalogue
@@ -251,10 +314,163 @@ class _HubControlScreenState extends State<HubControlScreen> {
       if (response.ok && response.result != null) {
         _dashboard = HubDashboardData.fromResult(response.result!);
         _syncToStore();
+      } else if (_noteAuthRequired(response)) {
+        return;
       }
     } catch (e, st) {
       debugPrint('HubControlScreen: get_dashboard failed: $e\n$st');
     }
+  }
+
+  /// Reacts to a mid-session `authentication_required` (the Hub drops the
+  /// login when the TLS session is replaced): flips the screen to the login
+  /// card instead of retrying commands on the unauthenticated session.
+  /// Returns true when the response was an auth-required rejection.
+  bool _noteAuthRequired(HubCommandResponse response) {
+    if (response.ok || response.error != 'authentication_required') {
+      return false;
+    }
+    if (!_needsLogin) {
+      _needsLogin = true;
+      if (mounted) setState(() {});
+    }
+    return true;
+  }
+
+  /// Interactive hub login (the TLS login contract's manual path): collects
+  /// the Hub's web administrator credentials, authenticates the live
+  /// session inside the dialog and stores them in the OS secure credential
+  /// store when [remember] is checked. A failed login stays in the dialog
+  /// (the Hub locks accounts after repeated failures, so nothing
+  /// auto-retries). Credential values never reach the logs.
+  Future<void> _showHubLoginDialog() async {
+    final client = _hubClient;
+    if (client == null || !client.isConnected) {
+      _showToast('Connect to the Hub first');
+      unawaited(_refresh());
+      return;
+    }
+    final usernameController = TextEditingController();
+    final passwordController = TextEditingController();
+    var remember = true;
+    var signingIn = false;
+    String? dialogError;
+
+    final signedIn = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Hub sign-in'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (dialogError != null) ...[
+                Text(dialogError!,
+                    style: TextStyle(
+                        color: Theme.of(dialogContext).colorScheme.error)),
+                const SizedBox(height: 8),
+              ],
+              TextField(
+                controller: usernameController,
+                decoration: const InputDecoration(labelText: 'Username'),
+                autocorrect: false,
+                enableSuggestions: false,
+              ),
+              TextField(
+                controller: passwordController,
+                decoration: const InputDecoration(labelText: 'Password'),
+                obscureText: true,
+                autocorrect: false,
+                enableSuggestions: false,
+              ),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: remember,
+                onChanged: (value) =>
+                    setDialogState(() => remember = value ?? true),
+                title: const Text('Remember on this device'),
+                subtitle:
+                    const Text('Stored in the OS secure credential store'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed:
+                  signingIn ? null : () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: signingIn
+                  ? null
+                  : () async {
+                      final username = usernameController.text.trim();
+                      final password = passwordController.text;
+                      if (username.isEmpty || password.isEmpty) {
+                        setDialogState(() => dialogError =
+                            'Enter the Hub administrator username and password.');
+                        return;
+                      }
+                      setDialogState(() {
+                        signingIn = true;
+                        dialogError = null;
+                      });
+                      try {
+                        final response =
+                            await client.authenticate(username, password);
+                        if (response.ok) {
+                          if (remember) {
+                            await HubCredentialStore.shared.save(
+                              widget.module.id,
+                              HubCredentials(
+                                  username: username, password: password),
+                            );
+                          }
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop(true);
+                          }
+                          return;
+                        }
+                        setDialogState(() {
+                          signingIn = false;
+                          dialogError =
+                              'The Hub rejected the credentials '
+                              '(${response.error ?? 'login failed'}).';
+                        });
+                      } catch (e) {
+                        setDialogState(() {
+                          signingIn = false;
+                          dialogError = 'Login failed: could not reach the '
+                              'Hub login.';
+                        });
+                      }
+                    },
+              child: signingIn
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Sign in'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    usernameController.dispose();
+    passwordController.dispose();
+    if (signedIn != true || !mounted) return;
+
+    // Interactive login succeeded: drop the login state and load the hub
+    // data on the now-authenticated session.
+    _needsLogin = false;
+    _loginError = null;
+    final module =
+        ModuleStore.shared.byId(widget.module.id) ?? widget.module;
+    await _loadHubData(client, module);
+    if (mounted) setState(() {});
   }
 
   void _syncToStore() {
@@ -354,6 +570,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
     );
     try {
       final response = await client.setOutput(channel, next);
+      if (_noteAuthRequired(response)) return;
       if (response.ok) {
         _showToast('$name turned ${next ? "ON" : "OFF"}');
         await _fetchDashboard();
@@ -397,6 +614,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
         : 'Modbus Output $channel';
     try {
       final response = await client.setModbusOutput(channel, next);
+      if (_noteAuthRequired(response)) return;
       if (response.ok) {
         _showToast('$name turned ${next ? "ON" : "OFF"}');
         await _fetchDashboard();
@@ -476,6 +694,47 @@ class _HubControlScreenState extends State<HubControlScreen> {
             ),
             const SizedBox(height: 8),
             ModuleStatusHeader(module: module),
+
+            // Hub login required (TLS login contract): control commands are
+            // withheld until the user signs in - the unauthenticated
+            // session is never polled (doc §"Connection sequence").
+            if (_needsLogin) ...[
+              const SizedBox(height: 16),
+              Card(
+                color: Theme.of(context).colorScheme.errorContainer,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Hub sign-in required',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 16,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onErrorContainer)),
+                      const SizedBox(height: 4),
+                      Text(
+                        _loginError ??
+                            'Sign in with the Hub administrator account to '
+                                'send commands (stored in the OS secure '
+                                'credential store).',
+                        style: TextStyle(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onErrorContainer),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        onPressed: _showHubLoginDialog,
+                        icon: const Icon(Icons.lock_open),
+                        label: const Text('Sign in'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
 
             if (di != null) ...[
               const SizedBox(height: 16),
