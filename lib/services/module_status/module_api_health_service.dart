@@ -220,13 +220,23 @@ class ModuleApiHealthService {
 
   /// Checks the module's 5008 Control API.
   ///
-  /// Prefers the persistent unit already owned by [ModuleStatusService] (so a
-  /// broken session is detected exactly where the probe sees it). When there is
-  /// no live unit, a throw-away socket performs the same hello round-trip.
+  /// TLS (`API_TLS:1`) modules always check on a fresh dial: the dial itself
+  /// performs the TLS handshake, which is the reachability evidence ("TLS
+  /// handshake = online"; a `hello` that answers
+  /// `authentication_required` keeps the module online - only the hub login
+  /// is missing, doc §"Login and commands").
   ///
-  /// Returns true (API answered), false (socket open, no API answer) or null
-  /// (socket could not be opened).
+  /// Plaintext modules prefer the persistent unit already owned by
+  /// [ModuleStatusService] (so a broken session is detected exactly where
+  /// the probe sees it); when there is no live unit, a throw-away socket
+  /// performs the same hello round-trip.
+  ///
+  /// Returns true (API answered / reachable), false (socket open, no API
+  /// answer) or null (socket could not be opened).
   Future<bool?> _apiAnswers(DeviceModule module) async {
+    if (moduleWantsTls(module, forced: Env.config.apiTlsEnabled)) {
+      return _transientHello(module);
+    }
     final unit = _statusService?.call()?.jsonCommandServiceFor(module.id);
     if (unit != null && unit.isConnected) {
       // The persistent session is live; a failed hello means the API is
@@ -246,17 +256,25 @@ class ModuleApiHealthService {
     }
   }
 
-  /// Opens a short-lived Control API socket and sends `hello`.
+  /// Opens a short-lived Control API socket (plain TCP or TLS per the
+  /// module's `API_TLS` advisory - the dial itself performs the TLS
+  /// handshake, doc/Soleux_Mobile_Control_API_TLS_Integration.md) and sends
+  /// `hello`.
   ///
   /// [module.ipAddress] may be a literal IPv4/IPv6 address *or* a domain name
   /// (remote mode). A domain can resolve to several addresses (e.g. IPv6 +
   /// IPv4), so every resolved address is tried in turn until one socket opens;
   /// the first that opens is the one `hello` is sent on.
   ///
-  /// Returns true when the module answered `ok` (API alive), false when the
-  /// socket opened but nothing valid came back in time (socket alive, API
-  /// broken), and **null** when no socket could be opened at all (module
-  /// unreachable - the caller reports offline).
+  /// Returns:
+  ///   - true when the module answered `ok` (API alive), or answered with
+  ///     `authentication_required` (the Hub TLS login contract: the Control
+  ///     API responded on the verified TLS socket, only the hub login is
+  ///     missing - reachable, doc §"Login and commands"),
+  ///   - false when the socket opened but nothing valid came back in time
+  ///     (socket alive, API broken),
+  ///   - **null** when no socket could be opened at all (module unreachable
+  ///     - the caller reports offline).
   Future<bool?> _transientHello(DeviceModule module) async {
     final port = module.controlApiPort;
     final Socket? socket = await _openSocket(module);
@@ -271,7 +289,14 @@ class ModuleApiHealthService {
       ).encode());
 
       final hello = await _firstJsonResponse(socket, id);
-      return hello?.ok ?? false;
+      if (hello == null) return false;
+      if (hello.ok) return true;
+      if (hello.error == 'authentication_required') {
+        debugPrint('ModuleApiHealthService: ${module.host}:$port is '
+            'reachable over TLS; hub login required');
+        return true;
+      }
+      return false;
     } catch (e, st) {
       debugPrint('ModuleApiHealthService: API hello on ${module.ipAddress}:'
           '$port failed: $e\n$st');
@@ -301,9 +326,9 @@ class ModuleApiHealthService {
         tls: moduleTlsOptions(module, forced: Env.config.apiTlsEnabled),
       );
 
-  /// True when a TCP socket to the module's 5008 API port can be opened at all.
-  /// Used to tell "device is gone" apart from "device is up but the API is
-  /// broken".
+  /// True when a socket to the module's 5008 API port can be opened at all
+  /// (a TLS dial succeeding means the handshake completed). Used to tell
+  /// "device is gone" apart from "device is up but the API is broken".
   Future<bool> _socketReachable(DeviceModule module) async {
     final socket = await _openSocket(module);
     if (socket == null) return false;
@@ -391,7 +416,11 @@ class ModuleApiHealthService {
   SoleuxJsonResponseLike? _decodeResponse(String line, int id) {
     final response = SoleuxJsonResponse.maybeParse(line);
     if (response == null || response.id != id) return null;
-    return SoleuxJsonResponseLike(id: response.id, ok: response.ok);
+    return SoleuxJsonResponseLike(
+      id: response.id,
+      ok: response.ok,
+      error: response.error?.summary,
+    );
   }
 
   void _scheduleCommit() {
@@ -406,5 +435,13 @@ class SoleuxJsonResponseLike {
   final int id;
   final bool ok;
 
-  const SoleuxJsonResponseLike({required this.id, required this.ok});
+  /// The stable error code of a failed response (e.g. the Hub login
+  /// contract's `authentication_required`), when present.
+  final String? error;
+
+  const SoleuxJsonResponseLike({
+    required this.id,
+    required this.ok,
+    this.error,
+  });
 }

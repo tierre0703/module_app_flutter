@@ -14,21 +14,31 @@ import 'package:soleux_device_manager/services/module_host_resolver.dart';
 
 /// Fake Control API device: answers the JSON `hello` while [answering] is true,
 /// and keeps the connection open when [socketAccepts] is true (simulating a
-/// device whose TCP port is up but whose API is broken).
+/// device whose TCP port is up but whose API is broken). With
+/// [authRequired] the device answers every command with the Hub TLS login
+/// contract's `authentication_required` error
+/// (doc/Soleux_Mobile_Control_API_TLS_Integration.md §"Login and commands").
 class _FakeApiDevice {
   final ServerSocket server;
   final List<Socket> _sockets = [];
   bool answering;
   bool socketAccepts;
+  bool authRequired;
 
   _FakeApiDevice._(this.server,
-      {this.answering = true, this.socketAccepts = true});
+      {this.answering = true,
+      this.socketAccepts = true,
+      this.authRequired = false});
 
   static Future<_FakeApiDevice> start(
-      {bool answering = true, bool socketAccepts = true}) async {
+      {bool answering = true,
+      bool socketAccepts = true,
+      bool authRequired = false}) async {
     final server = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
     final device = _FakeApiDevice._(server,
-        answering: answering, socketAccepts: socketAccepts);
+        answering: answering,
+        socketAccepts: socketAccepts,
+        authRequired: authRequired);
     server.listen(device._handle);
     return device;
   }
@@ -60,6 +70,16 @@ class _FakeApiDevice {
   void _reply(String line, Socket socket) {
     if (!answering || !line.startsWith('{')) return;
     final request = jsonDecode(line) as Map<String, dynamic>;
+    if (authRequired) {
+      socket.write('${jsonEncode({
+            'protocol': 1,
+            'id': request['id'],
+            'ok': false,
+            'error': 'authentication_required',
+            'message': 'Authenticate before sending control commands.',
+          })}\r\n');
+      return;
+    }
     if (request['action'] != 'hello') return;
     socket.write('${jsonEncode({
           'protocol': 2,
@@ -111,6 +131,41 @@ void main() {
     expect(store.byId('m1')!.status, ConnectionStatus.online);
     expect(store.byId('m1')!.lastSeenAt, isNotNull);
 
+    await device.close();
+  });
+
+  test('a hello answered with authentication_required keeps the module '
+      'online (TLS hub reachable, login-only)', () async {
+    // The enrolled TLS Hub demands the hub login before commands; the API
+    // answered on the (TLS) socket, so the module is NOT degraded.
+    final device = await _FakeApiDevice.start(authRequired: true);
+    final store = ModuleStore.forTesting();
+    final module = buildModule(host: device.port);
+    await store.replaceAll([module]);
+
+    final service = ModuleApiHealthService.forTesting(store: store);
+    final status = await service.checkOne(module);
+
+    expect(status, ConnectionStatus.online);
+    expect(store.byId('m1')!.status, ConnectionStatus.online);
+    expect(store.byId('m1')!.lastSeenAt, isNotNull);
+
+    await device.close();
+  });
+
+  test('a hello answered with another error still degrades to unknown '
+      '(API broken)', () async {
+    final device = await _FakeApiDevice.start();
+    device.answering = false; // socket open, nothing valid comes back
+    final store = ModuleStore.forTesting();
+    final module = buildModule(host: device.port)
+      ..status = ConnectionStatus.online;
+    await store.replaceAll([module]);
+
+    final service = ModuleApiHealthService.forTesting(store: store);
+    final status = await service.checkOne(module);
+
+    expect(status, ConnectionStatus.unknown);
     await device.close();
   });
 
