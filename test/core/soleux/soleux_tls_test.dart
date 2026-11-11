@@ -110,8 +110,8 @@ void main() {
       expect(moduleWantsTls(_module(apiTls: false)), isFalse);
     });
 
-    test('an absent API_TLS field is not proof TLS is off - but the current '
-        'plaintext-migration default applies', () {
+    test('an absent API_TLS field resolves to the device default 0 '
+        '(plaintext)', () {
       expect(moduleWantsTls(_module(apiTls: null)), isFalse);
     });
 

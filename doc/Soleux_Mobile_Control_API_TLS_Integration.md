@@ -265,8 +265,9 @@ follows (status as of 10 November 2026):
 
 | Concern | Implementation |
 |---|---|
-| `API_TLS` discovery field | Parsed by `lib/core/discovery/module_discovery.dart` into `DiscoveredModule.apiTls` / `DEVICE_ID` into `DiscoveredModule.deviceId`; persisted on `DeviceModule.apiTls` / `DeviceModule.deviceId` |
-| TLS on/off decision | `lib/core/soleux/soleux_tls.dart` (`moduleWantsTls`): code-level override `AppConfig.apiTlsEnabled` wins, otherwise the module's advertised `API_TLS`; an absent field keeps the plaintext migration default |
+| `API_TLS` discovery field | Parsed by `lib/core/discovery/module_discovery.dart` into `DiscoveredModule.apiTls` / `DEVICE_ID` into `DiscoveredModule.deviceId`; persisted on `DeviceModule.apiTls` / `DeviceModule.deviceId`. An absent `API_TLS` field applies the device default `0` (plaintext) |
+| `API_TLS` heartbeat field | Parsed from the heartbeat pong (`api_tls`, `lib/core/soleux/soleux_heartbeat.dart`) and applied to the stored module by `lib/services/module_status/module_heartbeat_service.dart`, which runs the 30 s UDP heartbeat for **local** devices (foreground lifecycle; remote/cloud and hostname-addressed modules excluded). A pong refreshes `last_seen_at`, `api_port`, `api_version` and the TLS flag; `device_id` is only filled when the module has none saved (the pong is unauthenticated - a saved TLS identity is never rebound). Online/offline stays owned by the 5008 API check |
+| TLS on/off decision | `lib/core/soleux/soleux_tls.dart` (`moduleWantsTls`): code-level override `AppConfig.apiTlsEnabled` wins, otherwise the module's advertised `API_TLS`; absent field resolves to `0` (plaintext) |
 | TLS dial | `lib/services/module_host_resolver.dart` (`connectModuleSocket`): `SecureSocket` with ALPN `soleux-json`, no downgrade to plaintext |
 | Trust anchor | `assets/certs/soleux_root_ca.pem` (the Soleux Development root installed from `creds/Soleux-Root-CA.pem`); sole anchor of a dedicated `SecurityContext` (`assets/certs/README.md` explains provisioning) |
 | Hostname validation | Connecting by IP intentionally fails the standard check; `SoleuxTlsOptions.accept` re-judges the hostname mismatch manually: DNS SAN == saved device ID (case-insensitive), leaf issuer DER byte-identical to the installed root's subject, validity window holds. Everything else fails closed |

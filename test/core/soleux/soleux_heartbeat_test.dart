@@ -70,6 +70,7 @@ void main() {
     final pong = SoleuxPong.parse(
         '{"soleux_heartbeat":1,"op":"pong","nonce":"n","tcp_port":5005,'
         '"name":"Plant Room Relays","api_port":5008,"api_version":3,'
+        '"api_tls":1,'
         '"device_id":"0000000012345678","boot_id":"4d2f9c"}');
     expect(pong.nonce, 'n');
     expect(pong.tcpPort, 5005);
@@ -78,6 +79,19 @@ void main() {
     expect(pong.apiVersion, 3);
     expect(pong.deviceId, '0000000012345678');
     expect(pong.bootId, '4d2f9c');
+    // Additive TLS advisory (doc/Soleux_Mobile_Control_API_TLS_Integration.md).
+    expect(pong.apiTls, isTrue);
+  });
+
+  test('api_tls parses 0 as false and stays null when absent', () {
+    final zero = SoleuxPong.parse(
+        '{"soleux_heartbeat":1,"op":"pong","nonce":"n","tcp_port":5008,'
+        '"api_tls":0}');
+    expect(zero.apiTls, isFalse);
+
+    final absent = SoleuxPong.parse(
+        '{"soleux_heartbeat":1,"op":"pong","nonce":"n","tcp_port":5008}');
+    expect(absent.apiTls, isNull);
   });
 
   test('additive fields default to null on a minimal pong', () {

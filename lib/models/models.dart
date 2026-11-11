@@ -612,9 +612,9 @@ class DeviceModule {
   /// Soleux discovery `API_TLS` advisory
   /// (doc/Soleux_Mobile_Control_API_TLS_Integration.md): `true` when the
   /// device advertised `API_TLS:1` (its Control API port speaks TLS 1.2+),
-  /// `false` for the temporary plaintext-migration mode, `null` when the
-  /// field was absent (legacy/unknown - **not** proof that TLS is off; the
-  /// current migration default is plaintext).
+  /// `false` for `API_TLS:0`, `null` when the field was absent - the device
+  /// default for an absent field is `0` (plaintext), which the resolver
+  /// applies.
   bool? apiTls;
 
   /// Expected TLS certificate identity: the permanent device ID

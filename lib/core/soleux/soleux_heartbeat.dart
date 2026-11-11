@@ -13,7 +13,7 @@
 //   - the device replies `pong` to the request source IP + source UDP port:
 //       {"soleux_heartbeat":1,"op":"pong","nonce":"<same>",
 //        "tcp_port":5008,"name":"Plant Room Relays",
-//        "api_port":5008,"api_version":3,
+//        "api_port":5008,"api_version":3,"api_tls":1,
 //        "device_id":"0000000012345678","boot_id":"4d2f9c"}
 //
 // The nonce is required, must not be empty, and is limited to 64 characters.
@@ -49,6 +49,13 @@ class SoleuxPong {
   /// Highest Control API version when advertised (additive; current 3).
   final int? apiVersion;
 
+  /// Soleux `API_TLS` advisory when advertised (additive,
+  /// doc/Soleux_Mobile_Control_API_TLS_Integration.md): `true` for `1`
+  /// (the Control API port speaks TLS), `false` for `0`, `null` when the
+  /// field is absent - the device default `0` (plaintext) applies in the TLS
+  /// resolver.
+  final bool? apiTls;
+
   /// Stable serial or MAC-derived identity when advertised (additive).
   final String? deviceId;
 
@@ -62,6 +69,7 @@ class SoleuxPong {
     this.name = '',
     this.apiPort,
     this.apiVersion,
+    this.apiTls,
     this.deviceId,
     this.bootId,
   });
@@ -83,6 +91,8 @@ class SoleuxPong {
       apiVersion: map['api_version'] is num
           ? (map['api_version'] as num).toInt()
           : null,
+      apiTls:
+          map['api_tls'] is num ? (map['api_tls'] as num).toInt() != 0 : null,
       deviceId: map['device_id'] as String?,
       bootId: map['boot_id'] as String?,
     );
@@ -319,6 +329,15 @@ class SoleuxHeartbeatMonitor {
       for (final target in targets)
         HeartbeatTarget(host: target.$1, tcpPort: target.$2),
     ]);
+  }
+
+  /// Starts pinging fully-specified [targets] (per-target advertised
+  /// heartbeat port, stabilization key and seeded availability). Same
+  /// semantics as [start]. Idempotent while already running.
+  void startTargets(Iterable<HeartbeatTarget> targets) {
+    if (_running) stop();
+    _running = true;
+    refreshTargets(targets);
   }
 
   /// Replaces the monitored target set while preserving per-target state for

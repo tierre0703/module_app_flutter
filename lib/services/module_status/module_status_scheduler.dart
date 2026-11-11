@@ -23,6 +23,7 @@ import 'package:flutter/widgets.dart';
 
 import 'background_status_worker.dart';
 import 'module_api_health_service.dart';
+import 'module_heartbeat_service.dart';
 import 'module_keep_alive.dart';
 import 'module_status_service.dart';
 
@@ -83,6 +84,10 @@ class ModuleStatusScheduler with WidgetsBindingObserver {
     // Begin the periodic 5008 Control API reachability check (online /
     // unknown / offline); stopped again when the app backgrounds.
     ModuleApiHealthService.shared.start().ignore();
+    // Begin the UDP heartbeat for local devices (refreshes each module's
+    // additive identity/TLS fields from the pongs); stopped when the app
+    // backgrounds.
+    ModuleHeartbeatService.shared.start();
   }
 
   void _enterBackground() {
@@ -95,11 +100,17 @@ class ModuleStatusScheduler with WidgetsBindingObserver {
     // teardown path runs for non-Android builds and for Android when the
     // keep-alive service has been stopped.
     if (ModuleKeepAlive.supported && ModuleKeepAlive.shared.running.value) {
+      // The Android foreground service keeps the process (and the UDP
+      // heartbeat monitor) alive: leave the heartbeat running with the
+      // persistent sockets.
       return;
     }
     // Stop the in-app 5008 API polling: the OS may suspend the timers anyway.
     // The native worker resumes reachability polling.
     ModuleApiHealthService.shared.stop();
+    // Stop the local-fleet UDP heartbeat: the OS may suspend the timers
+    // anyway; the native background worker owns reachability polling there.
+    ModuleHeartbeatService.shared.stop();
     // Close every persistent socket so they are not held open in the
     // background, then let the OS's native background worker poll the fleet
     // while the app is suspended.

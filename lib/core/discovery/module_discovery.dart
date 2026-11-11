@@ -80,9 +80,9 @@ class DiscoveredModule {
   final int? apiVersion;
 
   /// Advertised TLS advisory (additive, doc/Soleux_Mobile_Control_API_TLS_Integration.md):
-  /// `true` for `API_TLS:1` (the Control API port speaks TLS), `false` for the
-  /// temporary plaintext-migration `API_TLS:0`, `null` when the device
-  /// advertises nothing (legacy/unknown - not proof that TLS is off).
+  /// `true` for `API_TLS:1` (the Control API port speaks TLS), `false` for
+  /// `API_TLS:0`. An absent field means the device default `0` (plaintext)
+  /// applies; null preserves the "not advertised" state.
   final bool? apiTls;
 
   /// Advertised permanent device identity `DEVICE_ID`
@@ -191,8 +191,9 @@ class DiscoveredModule {
   }
 
   /// Parses the additive `API_TLS` advisory: `1` => true, `0` => false, any
-  /// other/absent value => null (legacy/unknown). Forward-compatible with a
-  /// future richer TLS indicator.
+  /// other/absent value => null. The device default for an absent field is
+  /// `0` (plaintext), which the TLS resolver applies
+  /// (doc/Soleux_Mobile_Control_API_TLS_Integration.md).
   static bool? _parseApiTls(String? raw) {
     final value = int.tryParse(raw ?? '');
     if (value == null) return null;

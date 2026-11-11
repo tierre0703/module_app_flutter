@@ -254,8 +254,8 @@ class SoleuxTlsOptions {
 ///      advertised flag;
 ///   2. the module's discovery-advertised `API_TLS` (`1` => true, `0` =>
 ///      false);
-///   3. an absent `API_TLS` field is legacy/unknown, not proof that TLS is
-///      off - the current plaintext-migration default false applies.
+///   3. an absent `API_TLS` field resolves to the device default `0`
+///      (plaintext).
 bool moduleWantsTls(DeviceModule module, {bool? forced}) =>
     forced ?? Env.config.apiTlsEnabled ?? (module.apiTls ?? false);
 
