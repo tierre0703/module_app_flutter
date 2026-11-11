@@ -340,9 +340,15 @@ class _HubControlScreenState extends State<HubControlScreen> {
   /// Interactive hub login (the TLS login contract's manual path): collects
   /// the Hub's web administrator credentials, authenticates the live
   /// session inside the dialog and stores them in the OS secure credential
-  /// store when [remember] is checked. A failed login stays in the dialog
+  /// store when "remember" is checked. A failed login stays in the dialog
   /// (the Hub locks accounts after repeated failures, so nothing
   /// auto-retries). Credential values never reach the logs.
+  ///
+  /// The dialog is a self-owned [StatefulWidget] ([_HubLoginDialog]) so its
+  /// text controllers live exactly as long as the dialog's widget subtree -
+  /// disposing them right after [showDialog] completes raced with the exit
+  /// animation and crashed the element tree
+  /// (`_dependents.isEmpty is not true`).
   Future<void> _showHubLoginDialog() async {
     final client = _hubClient;
     if (client == null || !client.isConnected) {
@@ -350,117 +356,15 @@ class _HubControlScreenState extends State<HubControlScreen> {
       unawaited(_refresh());
       return;
     }
-    final usernameController = TextEditingController();
-    final passwordController = TextEditingController();
-    var remember = true;
-    var signingIn = false;
-    String? dialogError;
-
     final signedIn = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Hub sign-in'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (dialogError != null) ...[
-                Text(dialogError!,
-                    style: TextStyle(
-                        color: Theme.of(dialogContext).colorScheme.error)),
-                const SizedBox(height: 8),
-              ],
-              TextField(
-                controller: usernameController,
-                decoration: const InputDecoration(labelText: 'Username'),
-                autocorrect: false,
-                enableSuggestions: false,
-              ),
-              TextField(
-                controller: passwordController,
-                decoration: const InputDecoration(labelText: 'Password'),
-                obscureText: true,
-                autocorrect: false,
-                enableSuggestions: false,
-              ),
-              CheckboxListTile(
-                contentPadding: EdgeInsets.zero,
-                value: remember,
-                onChanged: (value) =>
-                    setDialogState(() => remember = value ?? true),
-                title: const Text('Remember on this device'),
-                subtitle:
-                    const Text('Stored in the OS secure credential store'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed:
-                  signingIn ? null : () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: signingIn
-                  ? null
-                  : () async {
-                      final username = usernameController.text.trim();
-                      final password = passwordController.text;
-                      if (username.isEmpty || password.isEmpty) {
-                        setDialogState(() => dialogError =
-                            'Enter the Hub administrator username and password.');
-                        return;
-                      }
-                      setDialogState(() {
-                        signingIn = true;
-                        dialogError = null;
-                      });
-                      try {
-                        final response =
-                            await client.authenticate(username, password);
-                        if (response.ok) {
-                          if (remember) {
-                            await HubCredentialStore.shared.save(
-                              widget.module.id,
-                              HubCredentials(
-                                  username: username, password: password),
-                            );
-                          }
-                          if (dialogContext.mounted) {
-                            Navigator.of(dialogContext).pop(true);
-                          }
-                          return;
-                        }
-                        setDialogState(() {
-                          signingIn = false;
-                          dialogError =
-                              'The Hub rejected the credentials '
-                              '(${response.error ?? 'login failed'}).';
-                        });
-                      } catch (e) {
-                        setDialogState(() {
-                          signingIn = false;
-                          dialogError = 'Login failed: could not reach the '
-                              'Hub login.';
-                        });
-                      }
-                    },
-              child: signingIn
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Sign in'),
-            ),
-          ],
-        ),
+      builder: (_) => _HubLoginDialog(
+        client: client,
+        moduleId: widget.module.id,
+        initialError: _loginError,
       ),
     );
-
-    usernameController.dispose();
-    passwordController.dispose();
     if (signedIn != true || !mounted) return;
 
     // Interactive login succeeded: drop the login state and load the hub
@@ -1077,6 +981,151 @@ class _HubModbusOutputRow extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The interactive Hub sign-in dialog (TLS login contract, doc/
+/// Soleux_Mobile_Control_API_TLS_Integration.md §"Login and commands").
+///
+/// Owns its text controllers so they live exactly as long as the dialog's
+/// widget subtree: the route stays mounted through the exit animation, and
+/// disposing controllers when [State.dispose] runs (after the animation) is
+/// what keeps the element tree consistent. Authenticates against the live
+/// session and pops `true` only on success; a rejected login stays in the
+/// dialog without auto-retry (the Hub locks accounts after repeated
+/// failures).
+class _HubLoginDialog extends StatefulWidget {
+  const _HubLoginDialog({
+    required this.client,
+    required this.moduleId,
+    this.initialError,
+  });
+
+  final HubJsonProtocol client;
+  final String moduleId;
+
+  /// The stored-credential rejection message shown until the first
+  /// interactive attempt (never contains credentials).
+  final String? initialError;
+
+  @override
+  State<_HubLoginDialog> createState() => _HubLoginDialogState();
+}
+
+class _HubLoginDialogState extends State<_HubLoginDialog> {
+  late final TextEditingController _usernameController;
+  late final TextEditingController _passwordController;
+  bool _remember = true;
+  bool _signingIn = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _usernameController = TextEditingController();
+    _passwordController = TextEditingController();
+    _error = widget.initialError;
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signIn() async {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text;
+    if (username.isEmpty || password.isEmpty) {
+      setState(() => _error =
+          'Enter the Hub administrator username and password.');
+      return;
+    }
+    setState(() {
+      _signingIn = true;
+      _error = null;
+    });
+    try {
+      final response = await widget.client.authenticate(username, password);
+      if (response.ok) {
+        if (_remember) {
+          await HubCredentialStore.shared.save(
+            widget.moduleId,
+            HubCredentials(username: username, password: password),
+          );
+        }
+        if (mounted) Navigator.of(context).pop(true);
+        return;
+      }
+      if (!mounted) return;
+      setState(() {
+        _signingIn = false;
+        _error =
+            'The Hub rejected the credentials (${response.error ?? 'login failed'}).';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _signingIn = false;
+        _error = 'Login failed: could not reach the Hub login.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Hub sign-in'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (_error != null) ...[
+            Text(_error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            const SizedBox(height: 8),
+          ],
+          TextField(
+            controller: _usernameController,
+            decoration: const InputDecoration(labelText: 'Username'),
+            autocorrect: false,
+            enableSuggestions: false,
+          ),
+          TextField(
+            controller: _passwordController,
+            decoration: const InputDecoration(labelText: 'Password'),
+            obscureText: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            onSubmitted: (_) => _signIn(),
+          ),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: _remember,
+            onChanged: (value) => setState(() => _remember = value ?? true),
+            title: const Text('Remember on this device'),
+            subtitle: const Text('Stored in the OS secure credential store'),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed:
+              _signingIn ? null : () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _signingIn ? null : _signIn,
+          child: _signingIn
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Text('Sign in'),
+        ),
+      ],
     );
   }
 }
