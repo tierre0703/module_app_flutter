@@ -267,12 +267,23 @@ class SoleuxTlsOptions {
     if (leafIssuer == null ||
         issuers == null ||
         !issuers.any((subject) => _bytesEquals(leafIssuer, subject))) {
-      debugPrint('SoleuxTLS: rejecting certificate for '
-          '${certificate.subject}: issuer "${certificate.issuer}" is not the '
-          'installed Soleux CA chain (root + $_intermediateCount '
-          'intermediates). If the device is issued via an intermediate CA, '
-          'append the intermediate from the CA portal\'s CA chain (.pem) to '
-          'the CA asset.');
+      if (verifyHostname) {
+        debugPrint('SoleuxTLS: rejecting certificate for '
+            '${certificate.subject}: issuer "${certificate.issuer}" is not '
+            'the installed Soleux CA chain (root + $_intermediateCount '
+            'intermediates). If the device is issued via an intermediate CA, '
+            'append the intermediate from the CA portal\'s CA chain (.pem) '
+            'to the CA asset.');
+      } else {
+        // Hostname verification is disabled: this strict pre-check decline
+        // is expected for leaves issued via an intermediate that is not
+        // shipped - the dial retries and the platform's chain validation
+        // (already anchored on the installed root) decides.
+        debugPrint('SoleuxTLS: strict verdict declined for '
+            '${certificate.subject} (issuer "${certificate.issuer}" is not '
+            'in the installed CA chain); hostname verification is disabled, '
+            'the dial retries with verified-chain acceptance');
+      }
       return false;
     }
 

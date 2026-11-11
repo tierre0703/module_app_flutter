@@ -39,6 +39,12 @@ class _HubControlScreenState extends State<HubControlScreen> {
   bool _offline = false;
   bool _editDialogOpen = false;
   StreamSubscription<SoleuxDeviceEvent>? _eventSubscription;
+  StreamSubscription<String>? _dataSubscription;
+
+  /// True while [_connectAndRefresh] is in flight, so a concurrent refresh
+  /// does not stack a second client/connection on top of the first (the
+  /// TLS handshake makes the connect window long enough to hit this).
+  bool _connecting = false;
 
   @override
   void initState() {
@@ -48,6 +54,8 @@ class _HubControlScreenState extends State<HubControlScreen> {
 
   @override
   void dispose() {
+    _dataSubscription?.cancel();
+    _dataSubscription = null;
     _eventSubscription?.cancel();
     _eventSubscription = null;
     _hubClient?.dispose();
@@ -130,9 +138,19 @@ class _HubControlScreenState extends State<HubControlScreen> {
   }
 
   Future<void> _connectAndRefresh() async {
+    if (_connecting) return;
+    _connecting = true;
     final module = widget.module;
     final host = module.host;
     final port = module.controlApiPort;
+
+    // Tear down any previous client/connection before wiring the new one, so
+    // two live connections never share this state (the previous call's
+    // listeners are cancelled with their subscriptions below).
+    _dataSubscription?.cancel();
+    _dataSubscription = null;
+    _hubClient?.dispose();
+    _hubClient = null;
 
     final connection = ModuleTcpConnection(
       host: host,
@@ -140,18 +158,23 @@ class _HubControlScreenState extends State<HubControlScreen> {
       tls: moduleTlsOptions(module, forced: Env.config.apiTlsEnabled),
       timeout: const Duration(seconds: 5),
     );
-    _hubClient = HubJsonProtocol(connection);
+    final hubClient = HubJsonProtocol(connection);
+    _hubClient = hubClient;
 
-    connection.dataStream.listen((chunk) {
-      _hubClient!.feed(chunk);
-    });
+    // The chunk pump captures the LOCAL client: stream events are delivered
+    // in delayed microtasks, so dereferencing the field here raced with
+    // dispose()/re-connect nulling it (the `!` on a nulled field crashed).
+    // Feeding a disposed client's parser is harmless - its pending
+    // completers are gone and the connection under it is closed.
+    _dataSubscription = connection.dataStream.listen(hubClient.feed);
 
     // Subscribe to Hub async device events for real-time state updates.
     _eventSubscription?.cancel();
-    _eventSubscription = _hubClient!.deviceEventStream.listen(_onHubEvent);
+    _eventSubscription = hubClient.deviceEventStream.listen(_onHubEvent);
 
     try {
       await connection.connect();
+      if (!mounted) return;
       if (!connection.isConnected) {
         _offline = true;
         setState(() {});
@@ -159,14 +182,14 @@ class _HubControlScreenState extends State<HubControlScreen> {
       }
       _offline = false;
 
-      final hello = await _hubClient!.hello();
+      final hello = await hubClient.hello();
       if (!hello.ok) {
         _offline = true;
         if (mounted) setState(() {});
         return;
       }
 
-      final infoResp = await _hubClient!.getDeviceInfo();
+      final infoResp = await hubClient.getDeviceInfo();
       if (infoResp.ok && infoResp.result != null) {
         _deviceInfo = HubDeviceInfo.fromResult(infoResp.result!);
         final hubName = _deviceInfo!.name;
@@ -186,6 +209,8 @@ class _HubControlScreenState extends State<HubControlScreen> {
       debugPrint('HubControlScreen: connect/refresh failed: $e\n$st');
       _offline = true;
       if (mounted) setState(() {});
+    } finally {
+      _connecting = false;
     }
   }
 
