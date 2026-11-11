@@ -45,8 +45,10 @@ bool isLiteralIpAddress(String host) =>
 ///     ([SoleuxTlsOptions.caAsset]); validation failure or a
 ///     [SoleuxTlsProvisionError] fails the connect (closed), and
 ///   - connecting by IP against the Hub's DNS-SAN-only certificate fails the
-///     standard hostname check, which [SoleuxTlsOptions.accept] then re-judges
-///     by device-ID SAN + issuer match + validity.
+///     standard hostname check, which [SoleuxTlsOptions.accept] then
+///     re-judges by issuer match + validity, plus the device-ID DNS SAN
+///     when hostname verification is enabled
+///     ([AppConfig.tlsVerifyHostname], disabled by default).
 ///
 /// There is deliberately **no plaintext fallback** after a TLS failure
 /// (doc §"Connection sequence" step 2).

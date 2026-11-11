@@ -131,6 +131,9 @@ void main() {
       expect(options, isNotNull);
       expect(options!.expectedDeviceId, _deviceId);
       expect(options.caAsset, isNotNull);
+      // The shipped configuration disables hostname verification
+      // (AppConfig.tlsVerifyHostname).
+      expect(options.verifyHostname, isFalse);
     });
 
     test('returns null (plaintext) for an API_TLS:0 module', () {
@@ -155,7 +158,8 @@ void main() {
     setUp(() {
       options = SoleuxTlsOptions(
           expectedDeviceId: _deviceId,
-          caAsset: 'assets/certs/soleux_root_ca.pem');
+          caAsset: 'assets/certs/soleux_root_ca.pem',
+          verifyHostname: true);
       options.install(_fixtureText('test_root_ca.pem'));
       expect(options.identityCheckReady, isTrue);
     });
@@ -174,7 +178,9 @@ void main() {
 
     test('no acceptance without a usable installed root', () {
       final bare = SoleuxTlsOptions(
-          expectedDeviceId: _deviceId, caAsset: 'assets/certs/none.pem');
+          expectedDeviceId: _deviceId,
+          caAsset: 'assets/certs/none.pem',
+          verifyHostname: true);
       final leaf = _FakeCert.leaf('test_leaf.pem');
       expect(bare.accept(leaf), isFalse);
       expect(bare.context, isNull);
@@ -182,7 +188,9 @@ void main() {
 
     test('rejects when no device ID is saved for the module', () {
       final options = SoleuxTlsOptions(
-          expectedDeviceId: null, caAsset: 'assets/certs/soleux_root_ca.pem');
+          expectedDeviceId: null,
+          caAsset: 'assets/certs/soleux_root_ca.pem',
+          verifyHostname: true);
       options.install(_fixtureText('test_root_ca.pem'));
       final leaf = _FakeCert.leaf('test_leaf.pem');
       expect(options.accept(leaf), isFalse);
@@ -191,7 +199,8 @@ void main() {
     test('is case-insensitive on the DNS SAN match', () {
       final options = SoleuxTlsOptions(
           expectedDeviceId: _deviceId.toUpperCase(),
-          caAsset: 'assets/certs/soleux_root_ca.pem');
+          caAsset: 'assets/certs/soleux_root_ca.pem',
+          verifyHostname: true);
       options.install(_fixtureText('test_root_ca.pem'));
       final leaf = _FakeCert.leaf('test_leaf.pem');
       expect(options.accept(leaf), isTrue);
@@ -216,12 +225,53 @@ void main() {
     });
   });
 
+  group('SoleuxTlsOptions.accept (hostname verification disabled)', () {
+    late SoleuxTlsOptions options;
+    setUp(() {
+      options = SoleuxTlsOptions(
+          expectedDeviceId: null,
+          caAsset: 'assets/certs/soleux_root_ca.pem',
+          verifyHostname: false);
+      options.install(_fixtureText('test_root_ca.pem'));
+      expect(options.identityCheckReady, isTrue);
+    });
+
+    test('accepts a chained leaf without requiring the device-ID DNS SAN',
+        () {
+      // No saved device ID, and the leaf's SAN carries a different
+      // identity: chain trust (issuer match) and validity are sufficient.
+      final leaf = _FakeCert.leaf('test_leaf_wrong_san.pem');
+      expect(options.accept(leaf), isTrue);
+    });
+
+    test('still rejects a leaf whose issuer cannot be matched to the '
+        'installed chain', () {
+      final bare = SoleuxTlsOptions(
+          expectedDeviceId: null,
+          caAsset: 'assets/certs/soleux_root_ca.pem',
+          verifyHostname: false);
+      final leaf = _FakeCert.leaf('test_leaf.pem');
+      expect(bare.accept(leaf), isFalse);
+      expect(bare.context, isNull);
+    });
+
+    test('still rejects an expired leaf', () {
+      final leaf = _FakeCert.leaf(
+        'test_leaf.pem',
+        startValidity: DateTime.utc(2020, 1, 1),
+        endValidity: DateTime.utc(2021, 1, 1),
+      );
+      expect(options.accept(leaf), isFalse);
+    });
+  });
+
   group('SoleuxTlsOptions.install (CA asset provisioning)', () {
     test('builds a single-anchor SecurityContext and the root identity data',
         () {
       final options = SoleuxTlsOptions(
           expectedDeviceId: _deviceId,
-          caAsset: 'assets/certs/soleux_root_ca.pem');
+          caAsset: 'assets/certs/soleux_root_ca.pem',
+          verifyHostname: false);
       options.install(_fixtureText('test_root_ca.pem'));
       expect(options.context, isNotNull);
       expect(options.provisionError, isNull);
@@ -232,7 +282,8 @@ void main() {
         () {
       final options = SoleuxTlsOptions(
           expectedDeviceId: _deviceId,
-          caAsset: 'assets/certs/soleux_root_ca.pem');
+          caAsset: 'assets/certs/soleux_root_ca.pem',
+          verifyHostname: false);
       expect(() => options.install('# placeholder comments only\n'),
           throwsA(isA<SoleuxTlsProvisionError>()));
       expect(options.hasProvisionError, isTrue);
@@ -243,7 +294,8 @@ void main() {
         () {
       final options = SoleuxTlsOptions(
           expectedDeviceId: _deviceId,
-          caAsset: 'assets/certs/soleux_root_ca.pem');
+          caAsset: 'assets/certs/soleux_root_ca.pem',
+          verifyHostname: false);
       options.install(File(_shippedCaPath()).readAsStringSync());
       expect(options.provisionError, isNull);
       expect(options.context, isNotNull);
@@ -254,7 +306,8 @@ void main() {
         'only the root becomes the anchor', () {
       final options = SoleuxTlsOptions(
           expectedDeviceId: _deviceId,
-          caAsset: 'assets/certs/soleux_root_ca.pem');
+          caAsset: 'assets/certs/soleux_root_ca.pem',
+          verifyHostname: false);
       final chain = [_fixtureText('test_root_ca.pem'), _fixtureText('test_leaf.pem')]
           .join('\n');
       options.install(chain);

@@ -14,9 +14,11 @@
 //   - connecting by IP always fails standard hostname validation (the Hub
 //     certificate has a DNS SAN but no IP SAN), so
 //     [SoleuxTlsOptions.accept] performs the manual identity check for the
-//     hostname-mismatch case: DNS SAN == saved device ID (case-insensitive),
-//     leaf issuer DN byte-identical to the installed root's subject DN and a
-//     holding validity window. An untrusted leaf (unknown CA) also reaches
+//     hostname-mismatch case: leaf issuer DN byte-identical to the
+//     installed root's subject DN (or one of its intermediates) and a
+//     holding validity window. The DNS-SAN == saved-device-ID check is
+//     governed by the code-level [AppConfig.tlsVerifyHostname] switch
+//     (disabled by default). An untrusted leaf (unknown CA) also reaches
 //     this callback and fails these checks, so the handshake fails closed;
 //   - fail-closed everywhere: a misconfigured CA asset or an unconfirmable
 //     identity breaks the connection instead of downgrading to plaintext
@@ -68,7 +70,18 @@ class SoleuxTlsOptions {
   /// root-based issuer check cannot run).
   final String? caAsset;
 
-  SoleuxTlsOptions({required this.expectedDeviceId, required this.caAsset});
+  /// Whether the saved device ID must be confirmed in the certificate's DNS
+  /// SAN (`AppConfig.tlsVerifyHostname`). False (default) skips the SAN
+  /// check: the leaf is accepted on chain trust alone (issuer match +
+  /// validity), because the CA-status active check remains the documented
+  /// identity gate.
+  final bool verifyHostname;
+
+  SoleuxTlsOptions({
+    required this.expectedDeviceId,
+    required this.caAsset,
+    required this.verifyHostname,
+  });
 
   Future<void>? _provisionFuture;
   SecurityContext? _context;
@@ -227,20 +240,27 @@ class SoleuxTlsOptions {
       return false;
     }
 
-    final expected = expectedDeviceId?.trim().toLowerCase();
-    if (expected == null || expected.isEmpty) {
+    final expected = verifyHostname ? (expectedDeviceId?.trim().toLowerCase()) : null;
+    if (verifyHostname && (expected == null || expected.isEmpty)) {
       debugPrint('SoleuxTLS: rejecting certificate: no saved device ID to '
           'match the DNS SAN against');
       return false;
     }
     final sans = extractDnsSanEntries(certificate.der);
-    if (!sans.any((san) => san.trim().toLowerCase() == expected)) {
-      debugPrint('SoleuxTLS: rejecting certificate: DNS SAN(s) $sans do not '
-          'match device ID "${expectedDeviceId!}"');
-      return false;
+    if (verifyHostname) {
+      if (!sans.any((san) => san.trim().toLowerCase() == expected)) {
+        debugPrint('SoleuxTLS: rejecting certificate: DNS SAN(s) $sans do not '
+            'match device ID "${expectedDeviceId!}"');
+        return false;
+      }
+      debugPrint('SoleuxTLS: accepted certificate identity "$expected" '
+          '(SAN(s) ${sans.join(", ")})');
+      return true;
     }
-    debugPrint('SoleuxTLS: accepted certificate identity "$expected" '
-        '(SAN(s) ${sans.join(", ")})');
+    // Hostname verification is disabled (AppConfig.tlsVerifyHostname):
+    // chain trust (issuer match) and validity are the acceptance criteria.
+    debugPrint('SoleuxTLS: accepted certificate (hostname verification '
+        'disabled, SAN(s) ${sans.join(", ")})');
     return true;
   }
 }
@@ -263,12 +283,15 @@ bool moduleWantsTls(DeviceModule module, {bool? forced}) =>
 /// port must stay plaintext ([moduleWantsTls] false).
 ///
 /// Cheap to call per connection setup; the [SecurityContext] and root parse
-/// are provisioned lazily on the first dial.
+/// are provisioned lazily on the first dial. Hostname verification follows
+/// the code-level `AppConfig.tlsVerifyHostname` switch (disabled by
+/// default).
 SoleuxTlsOptions? moduleTlsOptions(DeviceModule module, {bool? forced}) {
   if (!moduleWantsTls(module, forced: forced)) return null;
   return SoleuxTlsOptions(
     expectedDeviceId: module.deviceId,
     caAsset: Env.config.soleuxRootCaAsset,
+    verifyHostname: Env.config.tlsVerifyHostname,
   );
 }
 

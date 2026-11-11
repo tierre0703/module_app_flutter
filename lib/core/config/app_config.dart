@@ -37,6 +37,25 @@ class AppConfig {
   /// diagnostic (never a fallback to plaintext or blind acceptance).
   final String? soleuxRootCaAsset;
 
+  /// Code-level switch for TLS **hostname verification** on the Control API
+  /// command channel (doc/Soleux_Mobile_Control_API_TLS_Integration.md
+  /// §"Recommended transport" requires the DNS SAN to match the saved device
+  /// ID; this switch relaxes that).
+  ///
+  /// The app dials 5008 by IP and the Hub certificate carries a DNS SAN but
+  /// no IP SAN, so the platform hostname check always fails and the app-side
+  /// verdict re-judges the hostname-mismatched leaf. With this switch
+  /// enabled, the verdict additionally requires the certificate's DNS SAN to
+  /// equal the module's saved device ID (`<ModelNumber>-<SerialNumber>`,
+  /// discovery `DEVICE_ID`). With it disabled (default), the saved device ID
+  /// is not required: the certificate is accepted as long as it chains to
+  /// the installed Soleux root CA (issuer match) and its validity window
+  /// holds - chain validation is never disabled.
+  ///
+  /// This is deliberately a build-time constant, not a user preference:
+  /// certificate trust policy is a deployment decision, not a UI toggle.
+  final bool tlsVerifyHostname;
+
   const AppConfig({
     required this.env,
     required this.mqttHost,
@@ -46,6 +65,7 @@ class AppConfig {
     required this.discoveryPort,
     required this.eventLogRetentionDays,
     this.apiTlsEnabled,
+    this.tlsVerifyHostname = false,
     this.soleuxRootCaAsset = 'assets/certs/soleux_root_ca.pem',
   });
 
