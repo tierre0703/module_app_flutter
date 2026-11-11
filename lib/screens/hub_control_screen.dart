@@ -1076,10 +1076,15 @@ class _HubLoginDialogState extends State<_HubLoginDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // scrollable: the keyboard's view insets shrink the dialog's max height;
+    // without scrolling the content (error + 2 fields + remember checkbox)
+    // overflows the bottom by tens of pixels when the keyboard is up.
     return AlertDialog(
       title: const Text('Hub sign-in'),
+      scrollable: true,
       content: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_error != null) ...[
             Text(_error!,
@@ -1092,6 +1097,7 @@ class _HubLoginDialogState extends State<_HubLoginDialog> {
             autocorrect: false,
             enableSuggestions: false,
           ),
+          const SizedBox(height: 12),
           TextField(
             controller: _passwordController,
             decoration: const InputDecoration(labelText: 'Password'),
