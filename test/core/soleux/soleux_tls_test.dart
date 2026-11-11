@@ -263,6 +263,15 @@ void main() {
       );
       expect(options.accept(leaf), isFalse);
     });
+
+    test('rejects a leaf issued via an intermediate that is not shipped',
+        () {
+      // The live failure mode: the device leaf chains through an issuing
+      // intermediate the device does not present and the app does not
+      // install. Root-only asset -> the issuer cannot be matched.
+      final leaf = _FakeCert.leaf('test_leaf_via_intermediate.pem');
+      expect(options.accept(leaf), isFalse);
+    });
   });
 
   group('SoleuxTlsOptions.install (CA asset provisioning)', () {
@@ -317,6 +326,33 @@ void main() {
       // The root remains the direct issuer candidate in this chain.
       final leaf = _FakeCert.leaf('test_leaf.pem');
       expect(options.accept(leaf), isTrue);
+    });
+
+    test('an intermediate in the chain asset is an issuer candidate (never '
+        'an anchor)', () {
+      final options = SoleuxTlsOptions(
+          expectedDeviceId: _deviceId,
+          caAsset: 'assets/certs/soleux_root_ca.pem',
+          verifyHostname: false);
+      // The "CA chain (.pem)" layout: issuing intermediate followed by the
+      // root.
+      final chain = [
+        _fixtureText('test_intermediate.pem'),
+        _fixtureText('test_root_ca.pem'),
+      ].join('\n');
+      options.install(chain);
+      expect(options.provisionError, isNull);
+      expect(options.identityCheckReady, isTrue);
+      expect(options.intermediateCount, 1);
+
+      // A device leaf issued by the intermediate is accepted even when the
+      // device does not present the intermediate itself: the issuer match
+      // runs against the shipped intermediate's subject.
+      final leaf = _FakeCert.leaf('test_leaf_via_intermediate.pem');
+      expect(options.accept(leaf), isTrue);
+      // Hostname verification is still off, so an unrelated SAN is fine.
+      final wrongSanLeaf = _FakeCert.leaf('test_leaf_wrong_san.pem');
+      expect(options.accept(wrongSanLeaf), isTrue);
     });
   });
 }

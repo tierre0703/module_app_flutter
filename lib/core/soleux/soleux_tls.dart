@@ -116,14 +116,16 @@ class SoleuxTlsOptions {
   }
 
   /// Installs [pemText] (the PEM content of the configured CA asset) as the
-  /// single trust anchor. Synchronous so tests can drive it directly.
+  /// trust anchor material. Synchronous so tests can drive it directly.
   ///
   /// The asset may carry the full CA chain (issuing intermediate + root, the
   /// "CA chain (.pem)" download): only the self-signed root becomes a trust
-  /// anchor ([SecurityContext]); any intermediate below the root is parsed
-  /// and allowed as a leaf's issuer ([SoleuxTlsOptions.accept]) **without**
-  /// being trusted itself - a compromised intermediate cannot be trusted
-  /// directly (doc §"What the app needs").
+  /// anchor ([SecurityContext] - the root is re-encoded into a root-only PEM
+  /// so the intermediate is never installed as an anchor); any intermediate
+  /// below the root is parsed and allowed as a leaf's issuer
+  /// ([SoleuxTlsOptions.accept]) **without** being trusted itself - a
+  /// compromised intermediate cannot be trusted directly (doc §"What the
+  /// app needs").
   ///
   /// A failed install records the cause in [provisionError] and rethrows.
   @visibleForTesting
@@ -146,19 +148,28 @@ class SoleuxTlsOptions {
         throw SoleuxTlsProvisionError(
             'root CA asset "$caAsset" is not a parseable certificate');
       }
+      // Trust anchor: ONLY the root. Re-encode the root DER into a
+      // root-only PEM instead of feeding the whole asset (a chain file
+      // would otherwise instal the intermediate as an anchor too).
       final context = SecurityContext();
       context.setTrustedCertificatesBytes(
-          Uint8List.fromList(utf8.encode(pemText)));
-      _trustedIssuerSubjects = [
-        subject,
-        // Intermediates issued by the root (leaf issuer candidates parsed
-        // for identity matching only - never added as trust anchors). The
-        // root itself qualifies too, which is harmless duplication.
-        for (final candidate in certificates)
-          if (_bytesEquals(
-              extractIssuerDer(candidate) ?? Uint8List(0), subject))
-            extractSubjectDer(candidate) ?? Uint8List(0),
-      ];
+          Uint8List.fromList(utf8.encode(_pemForCertificate(root))));
+      // Leaf-issuer candidates: the root's subject plus every distinct
+      // subject of certificates the root directly issued (the chain file's
+      // intermediates). Parsed for identity matching only - never added as
+      // trust anchors.
+      final issuerCandidates = <Uint8List>[subject];
+      for (final candidate in certificates) {
+        final issuer = extractIssuerDer(candidate);
+        final candidateSubject = extractSubjectDer(candidate);
+        if (issuer == null || candidateSubject == null) continue;
+        if (issuerCandidates.any((s) => _bytesEquals(s, candidateSubject))) {
+          continue;
+        }
+        if (_bytesEquals(issuer, subject)) issuerCandidates.add(candidateSubject);
+      }
+      _trustedIssuerSubjects = issuerCandidates;
+      _intermediateCount = issuerCandidates.length - 1;
       _context = context;
       _rootSubjectDer = subject;
       _provisionError = null;
@@ -198,6 +209,28 @@ class SoleuxTlsOptions {
   /// True once the root material needed by [accept] is available.
   bool get identityCheckReady => _rootSubjectDer != null;
 
+  /// How many intermediate issuer candidates the installed chain provided
+  /// (0 = direct-issuance root only). Exposed for tests/diagnostics.
+  @visibleForTesting
+  int get intermediateCount => _intermediateCount;
+
+  int _intermediateCount = 0;
+
+  /// Re-encodes a DER certificate into a single PEM block (used to build
+  /// the root-only trust-anchor material out of a chain asset).
+  static String _pemForCertificate(Uint8List der) {
+    final base64Body = base64.encode(der);
+    final lines = <String>[];
+    for (var i = 0; i < base64Body.length; i += 64) {
+      lines.add(base64Body.substring(i, i + 64 > base64Body.length
+          ? base64Body.length
+          : i + 64));
+    }
+    return '-----BEGIN CERTIFICATE-----\n'
+        '${lines.join('\n')}\n'
+        '-----END CERTIFICATE-----\n';
+  }
+
   /// The verdict for a certificate the TLS stack could not fully validate.
   ///
   /// A hostname mismatch (connecting by IP against a DNS-SAN-only
@@ -235,8 +268,11 @@ class SoleuxTlsOptions {
         issuers == null ||
         !issuers.any((subject) => _bytesEquals(leafIssuer, subject))) {
       debugPrint('SoleuxTLS: rejecting certificate for '
-          '${certificate.subject}: issuer is not the installed Soleux CA '
-          'chain');
+          '${certificate.subject}: issuer "${certificate.issuer}" is not the '
+          'installed Soleux CA chain (root + $_intermediateCount '
+          'intermediates). If the device is issued via an intermediate CA, '
+          'append the intermediate from the CA portal\'s CA chain (.pem) to '
+          'the CA asset.');
       return false;
     }
 
