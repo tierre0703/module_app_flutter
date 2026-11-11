@@ -173,6 +173,104 @@ void main() {
     });
   });
 
+  group('online/offline policy (mirrors ModuleApiHealthService.checkOne)',
+      () {
+    test('a valid pong is recovery: offline -> online (lastSeenAt set)',
+        () async {
+      final store = ModuleStore.forTesting();
+      final module = _module();
+      await store.replaceAll([module]);
+
+      final monitor = SoleuxHeartbeatMonitor();
+      final service =
+          ModuleHeartbeatService.forTesting(store: store, monitor: monitor);
+      service.start();
+      monitor.onState?.call(
+        HeartbeatTarget(host: '192.168.1.10', tcpPort: 5008, key: 'm1'),
+        HeartbeatAvailability.online,
+      );
+      service.stop();
+
+      final live = store.byId('m1')!;
+      expect(live.status, ConnectionStatus.online);
+      expect(live.lastSeenAt, isNotNull);
+    });
+
+    test('a pong also recovers an unknown module straight to online',
+        () async {
+      final store = ModuleStore.forTesting();
+      final module = _module()..status = ConnectionStatus.unknown;
+      await store.replaceAll([module]);
+
+      final monitor = SoleuxHeartbeatMonitor();
+      final service =
+          ModuleHeartbeatService.forTesting(store: store, monitor: monitor);
+      service.start();
+      monitor.onState?.call(
+        HeartbeatTarget(host: '192.168.1.10', tcpPort: 5008, key: 'm1'),
+        HeartbeatAvailability.online,
+      );
+      service.stop();
+
+      expect(store.byId('m1')!.status, ConnectionStatus.online);
+    });
+
+    test('one missed ping degrades an online module to unknown', () async {
+      final store = ModuleStore.forTesting();
+      final module = _module()..status = ConnectionStatus.online;
+      await store.replaceAll([module]);
+
+      final monitor = SoleuxHeartbeatMonitor();
+      final service =
+          ModuleHeartbeatService.forTesting(store: store, monitor: monitor);
+      service.start();
+      monitor.onState?.call(
+        HeartbeatTarget(host: '192.168.1.10', tcpPort: 5008, key: 'm1'),
+        HeartbeatAvailability.suspect,
+      );
+      service.stop();
+
+      expect(store.byId('m1')!.status, ConnectionStatus.unknown);
+    });
+
+    test('one missed ping keeps an offline module offline', () async {
+      final store = ModuleStore.forTesting();
+      final module = _module()..status = ConnectionStatus.offline;
+      await store.replaceAll([module]);
+
+      final monitor = SoleuxHeartbeatMonitor();
+      final service =
+          ModuleHeartbeatService.forTesting(store: store, monitor: monitor);
+      service.start();
+      monitor.onState?.call(
+        HeartbeatTarget(host: '192.168.1.10', tcpPort: 5008, key: 'm1'),
+        HeartbeatAvailability.suspect,
+      );
+      service.stop();
+
+      expect(store.byId('m1')!.status, ConnectionStatus.offline);
+    });
+
+    test('maxMissedCycles consecutive misses flag the device gone: offline',
+        () async {
+      final store = ModuleStore.forTesting();
+      final module = _module()..status = ConnectionStatus.unknown;
+      await store.replaceAll([module]);
+
+      final monitor = SoleuxHeartbeatMonitor();
+      final service =
+          ModuleHeartbeatService.forTesting(store: store, monitor: monitor);
+      service.start();
+      monitor.onState?.call(
+        HeartbeatTarget(host: '192.168.1.10', tcpPort: 5008, key: 'm1'),
+        HeartbeatAvailability.offline,
+      );
+      service.stop();
+
+      expect(store.byId('m1')!.status, ConnectionStatus.offline);
+    });
+  });
+
   group('end-to-end monitor round-trip (real UDP pong with API_TLS)', () {
     test('the stored module flips to TLS on an advertised pong', () async {
       final server = await RawDatagramSocket.bind(
@@ -229,6 +327,9 @@ void main() {
         }
         expect(store.byId('hub')!.deviceId, 'modbus_hub-123');
         expect(store.byId('hub')!.lastSeenAt, isNotNull);
+        // The valid pong is recovery: the module flips online with the
+        // same policy the 5008 API check applies.
+        expect(store.byId('hub')!.status, ConnectionStatus.online);
       } finally {
         service.stop();
         server.close();

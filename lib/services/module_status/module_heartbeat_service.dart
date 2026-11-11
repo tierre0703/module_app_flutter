@@ -4,16 +4,22 @@
 // (lib/core/soleux/soleux_heartbeat.dart, doc/
 // Soleux_Network_Discovery_and_Heartbeat_Specification_v0.1.md §4).
 //
-// Role split with the other monitors (deliberately narrow):
+// Role split with the other monitors:
 //
-//   - Online/offline stays owned by the 5008 Control API check
-//     ([ModuleApiHealthService]); the heartbeat availability stream is NOT
-//     wired into [ConnectionStatus] (a pong proves recent UDP reachability,
-//     not a working Control API).
-//   - Every valid pong refreshes the module's **additive identity fields**:
-//     `last_seen_at` (its documented semantic is "last heartbeat pong"), the
-//     advertised `api_port` / `api_version`, and - the reason this service
-//     exists - the `API_TLS` advisory (doc/
+//   - Online/offline uses the same tri-state policy the 5008 Control API
+//     check applies ([ModuleApiHealthService.checkOne] /
+//     [ModuleStatusService._applyReachability] - the original, working
+//     logic):
+//       * a valid pong is recovery: online, from unknown and offline alike,
+//         and refreshes `last_seen_at`;
+//       * one missed ping on a module that is not already offline degrades
+//         it to `unknown` ("was online, not currently confirmed"); an
+//         offline module stays offline while pings keep missing;
+//       * [SoleuxHeartbeatMonitor.maxMissedCycles] consecutive misses flag
+//         the device gone: offline.
+//   - Every valid pong also refreshes the module's **additive identity
+//     fields**: the advertised `api_port` / `api_version`, and - the reason
+//     this service exists - the `API_TLS` advisory (doc/
 //     Soleux_Mobile_Control_API_TLS_Integration.md). A TLS-flag flip takes
 //     effect on the next 5008 dial: the transient health-check socket is
 //     rebuilt per cycle and the persistent unit is replaced on the next
@@ -75,6 +81,7 @@ class ModuleHeartbeatService {
     }
     _monitor
       ..onPong = _onPong
+      ..onState = _onAvailability
       ..startTargets(buildTargets());
   }
 
@@ -180,6 +187,44 @@ class ModuleHeartbeatService {
     final module = _store.byId(target.stabilizationKey);
     if (module == null) return;
     applyPong(module, pong);
+  }
+
+  /// Applies the module online/offline policy to heartbeat availability -
+  /// the same tri-state policy the 5008 Control API check uses
+  /// ([ModuleApiHealthService.checkOne]):
+  ///
+  ///   - a valid pong is **recovery**: online, from unknown and offline
+  ///     alike, and refreshes `last_seen_at` (also applied in [applyPong]);
+  ///   - one missed ping (suspect) on a module that is not already offline
+  ///     degrades it to `unknown` - "was online, not currently confirmed";
+  ///     an offline module stays offline while pings keep missing;
+  ///   - [SoleuxHeartbeatMonitor.maxMissedCycles] consecutive misses
+  ///     (offline) flag the device gone: offline.
+  void _onAvailability(HeartbeatTarget target, HeartbeatAvailability state) {
+    final module = _store.byId(target.stabilizationKey);
+    if (module == null) return;
+    final ConnectionStatus next;
+    switch (state) {
+      case HeartbeatAvailability.online:
+        next = ConnectionStatus.online;
+        module.lastSeenAt = DateTime.now();
+      case HeartbeatAvailability.suspect:
+        next = module.status == ConnectionStatus.offline
+            ? ConnectionStatus.offline
+            : ConnectionStatus.unknown;
+      case HeartbeatAvailability.offline:
+        next = ConnectionStatus.offline;
+      case HeartbeatAvailability.unknown:
+        // No ping has completed yet for this target: leave the persisted
+        // status untouched (the monitor seeds it from the module's status).
+        next = module.status;
+    }
+    if (module.status != next) {
+      debugPrint('ModuleHeartbeat: ${module.name} (${module.id}) '
+          '${module.status.name} -> ${next.name}');
+      module.status = next;
+      _scheduleCommit();
+    }
   }
 
   /// Coalesces pong-driven store writes (one commit per 150 ms window, the
