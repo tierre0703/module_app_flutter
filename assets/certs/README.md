@@ -16,17 +16,21 @@ Verify it out of band before relying on it:
   (through a separate trusted channel, per doc §"What the app needs").
 
 Device certificates are issued by an **issuing intermediate**, not directly by
-the root. When a 5008 TLS connection is rejected with
-`issuer ... is not the installed Soleux CA chain`, append the intermediate to
-this file:
+the root. Two ways to make such leaves connect:
 
-1. Download **CA chain (.pem)** from the CA portal's "Certificates" page (it
-   contains the issuing intermediate followed by the root).
-2. Copy **both** certificates (or at least the issuing intermediate) into
-   `assets/certs/soleux_root_ca.pem`, keeping the root in the file.
-3. Rebuild. The loader installes **only the root** as the trust anchor; the
-   intermediate is used purely as a leaf-issuer match
-   (`SoleuxTlsOptions.install`).
+1. **Automatic (default)** - with hostname verification disabled
+   (`AppConfig.tlsVerifyHostname: false`), a 5008 dial that fails with a
+   *hostname-only* verification error is retried accepting the leaf. The TLS
+   stack only reports a hostname mismatch **after** the chain validated to
+   the installed root, so chain and validity stay enforced; unknown-CA,
+   expired or otherwise bad chains still fail closed. No extra certificate
+   file is needed.
+2. **Explicit intermediate** - append the intermediate from the CA portal's
+   **CA chain (.pem)** to `soleux_root_ca.pem` and rebuild. The loader
+   installes **only the root** as the trust anchor; the intermediate is used
+   purely as a leaf-issuer match (`SoleuxTlsOptions.install`), which keeps
+   the strict verdict path (and stays compatible with re-enabling hostname
+   verification later).
 
 Rules that stay in force:
 

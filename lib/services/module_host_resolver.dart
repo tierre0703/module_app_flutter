@@ -95,6 +95,20 @@ Future<Socket?> connectModuleSocket(
 
 /// Dials one [address]; returns null (never a plaintext fallback) when the
 /// plain or TLS connect fails.
+///
+/// TLS strategy (doc/Soleux_Mobile_Control_API_TLS_Integration.md):
+///   1. strict dial - the trust anchor is the bundled Soleux root CA and
+///      [SoleuxTlsOptions.accept] re-judges the hostname-mismatched leaf
+///      (issuer match + validity, plus the device-ID SAN when hostname
+///      verification is enabled);
+///   2. when hostname verification is disabled
+///      ([AppConfig.tlsVerifyHostname]) and the strict dial failed with a
+///      **hostname-only** verification error, the dial is retried accepting
+///      the leaf: the chain was already proven to the installed root by the
+///      platform (a hostname mismatch is only reported after chain
+///      validation succeeds), so this is exactly "hostname verification
+///      off" - chain and validity stay enforced, and any other failure
+///      reason (unknown CA, expired, ...) still fails closed.
 Future<Socket?> _dialSingle(
   InternetAddress address,
   int port, {
@@ -111,25 +125,60 @@ Future<Socket?> _dialSingle(
     // are surfaced as a failed connect (fail-closed).
     await tls.provision();
     if (tls.hasProvisionError) return null;
-    final socket = await SecureSocket.connect(
-      address,
-      port,
-      context: tls.context,
-      // The Hub cert has a DNS SAN but no IP SAN, so the stack rejects it
-      // first and [accept] re-judges it against the saved device ID.
-      onBadCertificate: tls.accept,
-      supportedProtocols: const [soleuxTlsAlpn],
-      timeout: timeout,
-    );
-    debugPrint('$debugTag: connected to $displayHost (${address.address}:'
-        '$port) over TLS');
-    return socket;
+    try {
+      final socket = await _tlsDial(address, port, timeout, tls, tls.accept);
+      debugPrint('$debugTag: connected to $displayHost (${address.address}:'
+          '$port) over TLS');
+      return socket;
+    } on HandshakeException catch (e) {
+      if (!tls.verifyHostname && isHostnameMismatchHandshake(e)) {
+        debugPrint('$debugTag: TLS chain verified to the installed root but '
+            'the hostname check failed; hostname verification is disabled - '
+            'accepting the verified chain');
+        final socket = await _tlsDial(address, port, timeout, tls, (_) => true);
+        debugPrint('$debugTag: connected to $displayHost (${address.address}:'
+            '$port) over TLS (hostname bypass)');
+        return socket;
+      }
+      rethrow;
+    }
   } catch (e) {
     debugPrint(
         '$debugTag: socket ${address.address}:$port failed: $e '
         '(${tls == null ? 'plaintext' : 'tls'})');
     return null;
   }
+}
+
+Future<SecureSocket> _tlsDial(
+  InternetAddress address,
+  int port,
+  Duration timeout,
+  SoleuxTlsOptions tls,
+  bool Function(X509Certificate) onBadCertificate,
+) =>
+    SecureSocket.connect(
+      address,
+      port,
+      context: tls.context,
+      // The Hub cert has a DNS SAN but no IP SAN, so the stack rejects it
+      // first and the callback re-judges it.
+      onBadCertificate: onBadCertificate,
+      supportedProtocols: const [soleuxTlsAlpn],
+      timeout: timeout,
+    );
+
+/// Whether [error] is a TLS verification failure caused *only* by the
+/// hostname/IP check. OpenSSL (BoringSSL) verifies the certificate chain
+/// first, so this reason only surfaces when the chain already validated to
+/// the installed trust anchor - accepting the peer afterwards is a hostname
+/// bypass, not a chain bypass.
+@visibleForTesting
+bool isHostnameMismatchHandshake(HandshakeException error) {
+  final text =
+      '${error.message} ${error.osError?.message ?? ''}'.toLowerCase();
+  return text.contains('ip address mismatch') ||
+      text.contains('hostname mismatch');
 }
 
 /// Resolves [host] to the IPv4 address to cache on the module, or null when it
