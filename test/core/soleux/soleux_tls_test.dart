@@ -90,6 +90,7 @@ DeviceModule _module({
   bool? apiTls,
   String? deviceId,
   ModuleType type = ModuleType.hub,
+  String? connectionType,
 }) =>
     DeviceModule(
       id: 'm-1',
@@ -101,6 +102,7 @@ DeviceModule _module({
       internalTempC: 25,
       apiTls: apiTls,
       deviceId: deviceId,
+      connectionType: connectionType,
     );
 
 void main() {
@@ -121,6 +123,32 @@ void main() {
       // null keeps the per-module decision.
       expect(moduleWantsTls(_module(apiTls: true), forced: null), isTrue);
     });
+
+    test('a remote-connection module is dialled TLS-first regardless of '
+        'the advertised API_TLS flag', () {
+      expect(
+          moduleWantsTls(_module(apiTls: null, connectionType: 'remote')),
+          isTrue);
+      expect(moduleWantsTls(_module(apiTls: false, connectionType: 'remote')),
+          isTrue);
+      expect(moduleWantsTls(_module(apiTls: true, connectionType: 'remote')),
+          isTrue);
+      // Local-network and cloud modules keep the advertised-flag decision.
+      expect(
+          moduleWantsTls(_module(apiTls: false, connectionType: 'local_network')),
+          isFalse);
+      expect(
+          moduleWantsTls(_module(apiTls: false, connectionType: 'cloud')),
+          isFalse);
+    });
+
+    test('the code-level switch still wins over the remote TLS-first rule',
+        () {
+      expect(
+          moduleWantsTls(_module(apiTls: true, connectionType: 'remote'),
+              forced: false),
+          isFalse);
+    });
   });
 
   group('moduleTlsOptions', () {
@@ -139,6 +167,21 @@ void main() {
     test('returns null (plaintext) for an API_TLS:0 module', () {
       expect(moduleTlsOptions(_module(apiTls: false, deviceId: _deviceId)),
           isNull);
+    });
+
+    test('a remote module allows the plaintext fallback, a local one does '
+        'not', () {
+      final remote = moduleTlsOptions(
+        _module(apiTls: false, deviceId: _deviceId, connectionType: 'remote'),
+      );
+      expect(remote, isNotNull);
+      expect(remote!.allowPlaintextFallback, isTrue);
+
+      final local = moduleTlsOptions(
+        _module(apiTls: true, deviceId: _deviceId),
+      );
+      expect(local, isNotNull);
+      expect(local!.allowPlaintextFallback, isFalse);
     });
 
     test('the CA asset is resolved from the app configuration', () {

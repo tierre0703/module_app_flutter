@@ -53,7 +53,10 @@ class _FakeApiDevice {
     }
     final buffer = StringBuffer();
     socket.listen((bytes) {
-      buffer.write(utf8.decode(bytes));
+      // The remote TLS-first probe may send a binary TLS ClientHello before
+      // the plaintext fallback; tolerate the malformed bytes like a real
+      // device that ignores non-JSON input.
+      buffer.write(utf8.decode(bytes, allowMalformed: true));
       var text = buffer.toString();
       var idx = text.indexOf('\n');
       while (idx >= 0) {
