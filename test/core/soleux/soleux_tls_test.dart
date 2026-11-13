@@ -91,7 +91,6 @@ DeviceModule _module({
   String? deviceId,
   ModuleType type = ModuleType.hub,
   String? connectionType,
-  bool? tlsEnabled,
 }) =>
     DeviceModule(
       id: 'm-1',
@@ -104,7 +103,6 @@ DeviceModule _module({
       apiTls: apiTls,
       deviceId: deviceId,
       connectionType: connectionType,
-      tlsEnabled: tlsEnabled,
     );
 
 void main() {
@@ -151,22 +149,6 @@ void main() {
               forced: false),
           isFalse);
     });
-
-    test('the explicit configuration-screen toggle overrides every '
-        'per-module default', () {
-      // Toggle ON forces TLS even for a plaintext-flagged local module.
-      expect(moduleWantsTls(_module(apiTls: false, tlsEnabled: true)), isTrue);
-      // Toggle OFF forces plaintext even for a remote module (no automatic
-      // fallback/downgrade in either direction).
-      expect(
-          moduleWantsTls(
-              _module(apiTls: true, connectionType: 'remote',
-                  tlsEnabled: false)),
-          isFalse);
-      // An untouched toggle (null) keeps the previous decision chain.
-      expect(
-          moduleWantsTls(_module(apiTls: false, tlsEnabled: null)), isFalse);
-    });
   });
 
   group('moduleTlsOptions', () {
@@ -187,15 +169,19 @@ void main() {
           isNull);
     });
 
-    test('a remote module with the toggle OFF stays plaintext (no automatic '
-        'fallback)', () {
-      expect(
-          moduleTlsOptions(_module(
-              apiTls: false,
-              deviceId: _deviceId,
-              connectionType: 'remote',
-              tlsEnabled: false)),
-          isNull);
+    test('a remote module allows the plaintext fallback, a local one does '
+        'not', () {
+      final remote = moduleTlsOptions(
+        _module(apiTls: false, deviceId: _deviceId, connectionType: 'remote'),
+      );
+      expect(remote, isNotNull);
+      expect(remote!.allowPlaintextFallback, isTrue);
+
+      final local = moduleTlsOptions(
+        _module(apiTls: true, deviceId: _deviceId),
+      );
+      expect(local, isNotNull);
+      expect(local!.allowPlaintextFallback, isFalse);
     });
 
     test('the CA asset is resolved from the app configuration', () {

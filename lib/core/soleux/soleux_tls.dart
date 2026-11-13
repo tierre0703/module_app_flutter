@@ -23,16 +23,15 @@
 //   - fail-closed everywhere: a misconfigured CA asset or an unconfirmable
 //     identity breaks the connection instead of downgrading to plaintext
 //     (doc §"Connection sequence" step 2: never fall back after a TLS
-//     failure). The transport is chosen explicitly: the module
-//     configuration screen's TLS toggle ([DeviceModule.tlsEnabled]) selects
-//     TLS or plaintext per module, and a module with connection type
-//     `remote` (port-forwarding address) defaults to TLS when the toggle
-//     was never saved.
+//     failure). The one exception is a module with connection type
+//     `remote`: it is dialled TLS-first and a failed TLS connect falls back
+//     to plaintext so the remote endpoint stays reachable
+//     ([SoleuxTlsOptions.allowPlaintextFallback]).
 //
 // The global enable/disable switch is code-level and sits in
-// [AppConfig.apiTlsEnabled]; by default (null) the per-module TLS toggle /
-// remote default / advertised `API_TLS` flag decides
-// (see [moduleWantsTls]).
+// [AppConfig.apiTlsEnabled]; by default (null) a remote-connection module
+// dials TLS-first, otherwise the module's own discovery-advertised `API_TLS`
+// flag decides (see [moduleWantsTls]).
 import 'dart:convert';
 import 'dart:io';
 
@@ -82,10 +81,20 @@ class SoleuxTlsOptions {
   /// identity gate.
   final bool verifyHostname;
 
+  /// Whether a failed TLS handshake/connect may fall back to a plaintext
+  /// dial of the same address ([connectModuleSocket in
+  /// `module_host_resolver.dart`]). True only for modules with connection
+  /// type `remote`: those are dialled TLS-first, and an endpoint behind a
+  /// remote path that does not (yet) speak TLS stays reachable over
+  /// plaintext. Local-network modules keep the documented fail-closed
+  /// behaviour (no downgrade after a TLS failure).
+  final bool allowPlaintextFallback;
+
   SoleuxTlsOptions({
     required this.expectedDeviceId,
     required this.caAsset,
     required this.verifyHostname,
+    this.allowPlaintextFallback = false,
   });
 
   Future<void>? _provisionFuture;
@@ -317,40 +326,41 @@ class SoleuxTlsOptions {
   }
 }
 
-/// Whether [module]'s Control API port is dialled with TLS.
+/// Whether [module]'s `API_TLS` flag selects TLS for its 5008 Control API
+/// port.
 ///
 /// Precedence (doc §"What the app needs" / "Compatibility boundaries"):
 ///   1. [forced] - the code-level `AppConfig.apiTlsEnabled` switch: a
-///      non-null value enables/disables TLS for every module, ignoring
-///      everything below;
-///   2. the module's explicit TLS selection from the configuration screen
-///      ([DeviceModule.tlsEnabled], the toggle button): `true` dials TLS,
-///      `false` keeps plaintext - the user's choice, no automatic
-///      fallback/downgrade in either direction;
-///   3. a module with connection type `remote` (hostname/port-forwarding
-///      address) defaults to TLS;
-///   4. the module's discovery-advertised `API_TLS` (`1` => true, `0` =>
-///      false); an absent field resolves to the device default `0`
+///      non-null value enables/disables TLS for every module, ignoring the
+///      advertised flag;
+///   2. a module with connection type `remote` is always dialled TLS-first
+///      (the remote path is expected to serve the Control API with TLS; a
+///      failed handshake may fall back to plaintext,
+///      [SoleuxTlsOptions.allowPlaintextFallback]);
+///   3. the module's discovery-advertised `API_TLS` (`1` => true, `0` =>
+///      false);
+///   4. an absent `API_TLS` field resolves to the device default `0`
 ///      (plaintext).
 bool moduleWantsTls(DeviceModule module, {bool? forced}) => forced ??
-    module.tlsEnabled ??
     (module.connectionType == 'remote' ||
         (Env.config.apiTlsEnabled ?? (module.apiTls ?? false)));
 
-/// Builds the TLS dial options for [module], or null when the module's
-/// Control API port must stay plaintext ([moduleWantsTls] false).
+/// Builds the TLS dial options for [module], or null when the module's 5008
+/// port must stay plaintext ([moduleWantsTls] false).
 ///
 /// Cheap to call per connection setup; the [SecurityContext] and root parse
 /// are provisioned lazily on the first dial. Hostname verification follows
 /// the code-level `AppConfig.tlsVerifyHostname` switch (disabled by
-/// default). A failed TLS connect never falls back to plaintext: the module
-/// configuration screen's TLS toggle decides the transport explicitly.
+/// default). Remote modules (`connectionType == 'remote'`) are dialled
+/// TLS-first and allow a plaintext fallback after a failed TLS connect;
+/// every other module keeps the fail-closed behaviour.
 SoleuxTlsOptions? moduleTlsOptions(DeviceModule module, {bool? forced}) {
   if (!moduleWantsTls(module, forced: forced)) return null;
   return SoleuxTlsOptions(
     expectedDeviceId: module.deviceId,
     caAsset: Env.config.soleuxRootCaAsset,
     verifyHostname: Env.config.tlsVerifyHostname,
+    allowPlaintextFallback: module.connectionType == 'remote',
   );
 }
 

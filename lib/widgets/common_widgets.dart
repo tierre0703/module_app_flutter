@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:soleux_device_manager/l10n/gen/app_localizations.dart';
 
 import '../models/models.dart';
-import '../core/soleux/soleux_tls.dart';
 import '../services/module_host_resolver.dart';
 import '../services/module_status/module_status_service.dart';
 import '../services/module_store.dart';
@@ -343,13 +342,6 @@ Future<bool> showEditModuleInfoDialog(
     }
     final port = result.port;
     if (port != null) module.tcpPort = port;
-    // The TLS toggle only exists for the remote (port-forwarding) connection
-    // type: it stores the displayed TLS/plaintext choice explicitly. Any
-    // other connection type clears the stored choice, returning the module
-    // to the automatic decision chain (code-level switch, advertised
-    // API_TLS flag) with no downgrade after a TLS failure.
-    module.tlsEnabled =
-        result.connectionType == 'remote' ? result.tlsEnabled : null;
     final tempThreshold = result.tempThreshold;
     if (tempThreshold != null && tempThreshold > 0) {
       module.tempMaxC = tempThreshold.clamp(0, 100);
@@ -378,7 +370,6 @@ class ModuleInfoResult {
     this.type,
     this.connectionType,
     this.port,
-    required this.tlsEnabled,
     this.tempThreshold,
   });
 
@@ -388,10 +379,6 @@ class ModuleInfoResult {
   final ModuleType? type;
   final String? connectionType;
   final int? port;
-
-  /// Explicit TLS vs plaintext transport choice for the module's Control
-  /// API port (the toggle in the dialog).
-  final bool tlsEnabled;
   final double? tempThreshold;
 }
 
@@ -412,13 +399,6 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
   late ModuleType _type;
   late String? _connectionType;
 
-  /// TLS transport selection for the module's Control API port. The toggle
-  /// is only offered for the `remote` connection type (port-forwarding
-  /// address); it shows the stored choice ([DeviceModule.tlsEnabled]) or,
-  /// before any save, the remote TLS default.
-  bool _tlsEnabled = false;
-  bool _tlsTouched = false;
-
   @override
   void initState() {
     super.initState();
@@ -436,11 +416,6 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
         const {'local_network', 'remote', 'cloud'}.contains(m.connectionType)
             ? m.connectionType
             : 'local_network';
-    // A stored choice keeps the toggle untouched (so switching the
-    // connection type away from remote and back does not lose it); without
-    // one the toggle shows the effective default and any save stores it.
-    _tlsEnabled = m.tlsEnabled ?? moduleWantsTls(m);
-    _tlsTouched = m.tlsEnabled != null;
   }
 
   @override
@@ -464,11 +439,9 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
               type: _type,
               connectionType: _connectionType,
               port: int.tryParse(_portController.text.trim()),
-              tlsEnabled: _tlsEnabled,
               tempThreshold: double.tryParse(_tempController.text.trim()),
             )
-          : const ModuleInfoResult(
-              saved: false, name: '', ip: '', tlsEnabled: false),
+          : const ModuleInfoResult(saved: false, name: '', ip: ''),
     );
   }
 
@@ -550,13 +523,7 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
                   ),
                 ),
               ],
-              onChanged: (value) => setState(() {
-                _connectionType = value;
-                // The TLS toggle only concerns the remote (port-forwarding)
-                // connection type; switching to remote defaults the toggle
-                // to TLS unless the user already picked explicitly.
-                if (value == 'remote' && !_tlsTouched) _tlsEnabled = true;
-              }),
+              onChanged: (value) => setState(() => _connectionType = value),
             ),
             const SizedBox(height: 12),
             TextField(
@@ -584,23 +551,6 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
                   hintText: '5008',
                   prefixIcon: const Icon(Icons.router_outlined)),
             ),
-            // The TLS toggle only applies to a remote (port-forwarding)
-            // connection; local/cloud modules follow the automatic TLS
-            // decision chain.
-            if (_connectionType == 'remote') ...[
-              const SizedBox(height: 4),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(AppLocalizations.of(context).tlsConnection),
-                subtitle:
-                    Text(AppLocalizations.of(context).tlsConnectionHelp),
-                secondary: Icon(_tlsEnabled
-                    ? Icons.lock_outline
-                    : Icons.lock_open_outlined),
-                value: _tlsEnabled,
-                onChanged: (value) => setState(() => _tlsEnabled = value),
-              ),
-            ],
             const SizedBox(height: 12),
             TextField(
               controller: _tempController,

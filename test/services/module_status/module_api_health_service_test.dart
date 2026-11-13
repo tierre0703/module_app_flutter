@@ -282,9 +282,6 @@ void main() {
       internalTempC: 25,
       tcpPort: device.port,
       connectionType: 'remote',
-      // The fake answers plaintext: the configuration-screen TLS toggle is
-      // off for this module.
-      tlsEnabled: false,
     );
     await store.replaceAll([module]);
 
@@ -339,9 +336,6 @@ void main() {
       internalTempC: 25,
       tcpPort: device.port,
       connectionType: 'remote',
-      // The fake answers plaintext: the configuration-screen TLS toggle is
-      // off for this module.
-      tlsEnabled: false,
     );
     await store.replaceAll([module]);
     expect(module.host, '127.0.0.1');
