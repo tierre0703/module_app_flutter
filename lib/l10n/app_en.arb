@@ -149,6 +149,8 @@
   "connectionLocalNetwork": "Local Network Connection",
   "connectionRemote": "Remote Connection",
   "connectionCloud": "Cloud Connection",
+  "tlsConnection": "TLS (secure) connection",
+  "tlsConnectionHelp": "Dials the module's Control API port over TLS with certificate verification. Turn off for a plaintext connection.",
   "ipAddress": "IP address",
   "tcpPort": "TCP port",
 

@@ -52,6 +52,12 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
   ModuleType _manualType = ModuleType.relay;
   String _connectionType = 'local_network';
 
+  /// Manual-add TLS selection for the Control API port. The toggle is only
+  /// offered for the `remote` (port-forwarding) connection type, where it
+  /// defaults to TLS until the user explicitly toggles it ([_tlsTouched]).
+  bool _tlsEnabled = false;
+  bool _tlsTouched = false;
+
   @override
   void initState() {
     super.initState();
@@ -304,6 +310,12 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
       ipAddress: entered,
       resolvedIp: resolvedIp,
       tcpPort: int.tryParse(_tcpPortController.text.trim()) ?? 5008,
+      // The TLS toggle only applies to the remote (port-forwarding)
+      // connection type: an explicit choice is stored, anything else stays
+      // null so the automatic TLS decision chain applies.
+      tlsEnabled: _connectionType == 'remote' && _tlsTouched
+          ? _tlsEnabled
+          : null,
       // A manually entered address has not been verified reachable yet: seed
       // it offline and let the API health check confirm it online. Seeding
       // online here would show a module as reachable even when it is not.
@@ -558,6 +570,27 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
                   hintText: '5008',
                   prefixIcon: const Icon(Icons.router_outlined)),
             ),
+            // The TLS toggle only applies to a remote (port-forwarding)
+            // connection; it defaults to TLS there unless the user turned
+            // it off.
+            if (_connectionType == 'remote') ...[
+              const SizedBox(height: 4),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(l10n.tlsConnection),
+                subtitle: Text(l10n.tlsConnectionHelp),
+                secondary: Icon(_tlsTouched
+                    ? (_tlsEnabled
+                        ? Icons.lock_outline
+                        : Icons.lock_open_outlined)
+                    : Icons.lock_outline),
+                value: _tlsTouched ? _tlsEnabled : true,
+                onChanged: (value) => setState(() {
+                  _tlsTouched = true;
+                  _tlsEnabled = value;
+                }),
+              ),
+            ],
             const SizedBox(height: 12),
             DropdownButtonFormField<ModuleType>(
               initialValue: _manualType,

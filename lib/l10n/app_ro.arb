@@ -149,6 +149,8 @@
   "connectionLocalNetwork": "Conexiune rețea locală",
   "connectionRemote": "Conexiune la distanță",
   "connectionCloud": "Conexiune cloud",
+  "tlsConnection": "Conexiune TLS (securizată)",
+  "tlsConnectionHelp": "Se conectează la portul Control API al modulului prin TLS, cu verificarea certificatului. Dezactivați pentru conexiune necriptată.",
   "ipAddress": "Adresă IP",
   "tcpPort": "Port TCP",
 
