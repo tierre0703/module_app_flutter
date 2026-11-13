@@ -549,6 +549,7 @@ class DeviceModule {
     this.serial,
     this.mac,
     this.connectionType = 'local_network',
+    this.tlsEnabled,
     this.resolvedIp,
     this.apiPort,
     this.apiHttpPort,
@@ -596,6 +597,15 @@ class DeviceModule {
   /// How the client reaches this module: `local_network`, `remote`, or
   /// `cloud`. Null until set from the edit-module-info dialog.
   String? connectionType;
+
+  /// Explicit TLS selection from the module configuration screen
+  /// (edit-module-info dialog / manual add): `true` dials the module's
+  /// Control API port with TLS, `false` keeps it plaintext. Null until the
+  /// user saved a configuration once - the effective decision then follows
+  /// the code-level `AppConfig.apiTlsEnabled` switch, the remote-connection
+  /// TLS default and the discovery-advertised `API_TLS` flag
+  /// (see [moduleWantsTls] in `core/soleux/soleux_tls.dart`).
+  bool? tlsEnabled;
 
   /// Control API v3 TCP port when advertised by discovery (normally 5008).
   int? apiPort;
@@ -702,6 +712,7 @@ class DeviceModule {
         'serial': serial,
         'mac': mac,
         'connectionType': connectionType,
+        'tlsEnabled': tlsEnabled,
         'apiPort': apiPort,
         'apiHttpPort': apiHttpPort,
         'apiVersion': apiVersion,
@@ -732,6 +743,7 @@ class DeviceModule {
         serial: json['serial'] as String?,
         mac: json['mac'] as String?,
         connectionType: json['connectionType'] as String? ?? 'local_network',
+        tlsEnabled: json['tlsEnabled'] as bool?,
         apiPort: (json['apiPort'] as num?)?.toInt(),
         apiHttpPort: (json['apiHttpPort'] as num?)?.toInt(),
         apiVersion: (json['apiVersion'] as num?)?.toInt(),
