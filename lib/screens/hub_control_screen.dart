@@ -90,52 +90,53 @@ class _HubControlScreenState extends State<HubControlScreen> {
     if (dash == null) return;
 
     // Log every incoming Hub broadcast event for monitoring/diagnostics.
-    AppLogger.log(
-        'Hub broadcast: ${event.rawEvent}',
+    AppLogger.log('Hub broadcast: ${event.rawEvent}',
         tag: 'hub_control_screen');
 
     var changed = false;
     switch (event.type) {
-      case SoleuxDeviceEventType.outputStateChanged: {
-        // Hub async events use zero-based bank channels per spec §"Channel
-        // and state rules". The `output_type` field distinguishes modbus
-        // power outputs from regular local outputs.
-        final channel = event.channel;
-        final state = event.state;
-        if (channel == null || state == null) break;
+      case SoleuxDeviceEventType.outputStateChanged:
+        {
+          // Hub async events use zero-based bank channels per spec §"Channel
+          // and state rules". The `output_type` field distinguishes modbus
+          // power outputs from regular local outputs.
+          final channel = event.channel;
+          final state = event.state;
+          if (channel == null || state == null) break;
 
-        final outputType = event.data['output_type'] as String?;
-        if (outputType == 'modbus_power') {
-          if (channel >= 0 && channel < dash.modbusOutputs.length) {
-            dash.modbusOutputs[channel].state = state;
+          final outputType = event.data['output_type'] as String?;
+          if (outputType == 'modbus_power') {
+            if (channel >= 0 && channel < dash.modbusOutputs.length) {
+              dash.modbusOutputs[channel].state = state;
+              changed = true;
+            }
+          } else {
+            // "local" or absent — treat as a normal output.
+            if (channel >= 0 && channel < dash.outputs.length) {
+              dash.outputs[channel].state = state;
+              changed = true;
+            }
+          }
+          break;
+        }
+      case SoleuxDeviceEventType.systemStatus:
+        {
+          // Periodic ~5-second system snapshot with CPU temp, internal temp,
+          // memory/CPU usage, and LAN IP.
+          final system = event.system;
+          if (system != null) {
+            final cpuTemp = system['cpu_temp_c'];
+            if (cpuTemp is num) {
+              dash.cpuTemp = cpuTemp.toDouble();
+            }
+            final internalTemp = system['internal_temp_c'];
+            if (internalTemp is num) {
+              dash.internalTemp = internalTemp.toDouble();
+            }
             changed = true;
           }
-        } else {
-          // "local" or absent — treat as a normal output.
-          if (channel >= 0 && channel < dash.outputs.length) {
-            dash.outputs[channel].state = state;
-            changed = true;
-          }
+          break;
         }
-        break;
-      }
-      case SoleuxDeviceEventType.systemStatus: {
-        // Periodic ~5-second system snapshot with CPU temp, internal temp,
-        // memory/CPU usage, and LAN IP.
-        final system = event.system;
-        if (system != null) {
-          final cpuTemp = system['cpu_temp_c'];
-          if (cpuTemp is num) {
-            dash.cpuTemp = cpuTemp.toDouble();
-          }
-          final internalTemp = system['internal_temp_c'];
-          if (internalTemp is num) {
-            dash.internalTemp = internalTemp.toDouble();
-          }
-          changed = true;
-        }
-        break;
-      }
       default:
         // input_state_changed and other events are logged but do not affect
         // the dashboard output display (inputs are not rendered here).
@@ -197,8 +198,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
       // fresh TLS session must be `authenticate`. Without stored (or newly
       // entered) credentials the screen shows the login card and does not
       // poll control commands on the unauthenticated session.
-      if (connection.usesTls &&
-          !await _loginWithStoredCredentials(hubClient)) {
+      if (connection.usesTls && !await _loginWithStoredCredentials(hubClient)) {
         _needsLogin = true;
         if (mounted) setState(() {});
         return;
@@ -223,8 +223,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
   /// loop - the Hub locks accounts after repeated failures). Credential
   /// values never reach the logs.
   Future<bool> _loginWithStoredCredentials(HubJsonProtocol hubClient) async {
-    final module =
-        ModuleStore.shared.byId(widget.module.id) ?? widget.module;
+    final module = ModuleStore.shared.byId(widget.module.id) ?? widget.module;
     final credentials = await HubCredentialStore.shared.load(module.id);
     if (credentials == null) return false;
     try {
@@ -371,8 +370,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
     // data on the now-authenticated session.
     _needsLogin = false;
     _loginError = null;
-    final module =
-        ModuleStore.shared.byId(widget.module.id) ?? widget.module;
+    final module = ModuleStore.shared.byId(widget.module.id) ?? widget.module;
     await _loadHubData(client, module);
     if (mounted) setState(() {});
   }
@@ -388,7 +386,9 @@ class _HubControlScreenState extends State<HubControlScreen> {
         final isModbus = m.channels.length >= dash.outputs.length;
         m.channels.add(ChannelOutput(
           id: '${m.id}h${m.channels.length}',
-          name: isModbus ? 'Modbus Output ${m.channels.length - dash.outputs.length + 1}' : 'Output ${m.channels.length + 1}',
+          name: isModbus
+              ? 'Modbus Output ${m.channels.length - dash.outputs.length + 1}'
+              : 'Output ${m.channels.length + 1}',
           icon: Icons.electrical_services,
           isModbusPower: isModbus,
         ));
@@ -398,18 +398,19 @@ class _HubControlScreenState extends State<HubControlScreen> {
       }
       for (int i = 0; i < dash.outputs.length && i < m.channels.length; i++) {
         final state = dash.outputs[i];
-        m.channels[i].name = state.name.isNotEmpty
-            ? state.name
-            : m.channels[i].name;
+        m.channels[i].name =
+            state.name.isNotEmpty ? state.name : m.channels[i].name;
         m.channels[i].isOn = state.state;
         m.channels[i].isModbusPower = false;
       }
-      for (int i = 0; i < dash.modbusOutputs.length && i + dash.outputs.length < m.channels.length; i++) {
+      for (int i = 0;
+          i < dash.modbusOutputs.length &&
+              i + dash.outputs.length < m.channels.length;
+          i++) {
         final state = dash.modbusOutputs[i];
         final ci = dash.outputs.length + i;
-        m.channels[ci].name = state.name.isNotEmpty
-            ? state.name
-            : 'Modbus Output ${i + 1}';
+        m.channels[ci].name =
+            state.name.isNotEmpty ? state.name : 'Modbus Output ${i + 1}';
         m.channels[ci].isOn = state.state;
         m.channels[ci].isModbusPower = true;
       }
@@ -437,9 +438,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
           builder: (_) => ChannelEditorScreen(
-              channel: module.channels[index],
-              module: module,
-              index: index)),
+              channel: module.channels[index], module: module, index: index)),
     );
     if (saved == true) {
       await ModuleStore.shared.update(widget.module.id, (_) {});
@@ -458,8 +457,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
       final tlsBefore = moduleWantsTls(module);
       final saved = await showEditModuleInfoDialog(context, module);
       if (saved && mounted) {
-        final live =
-            ModuleStore.shared.byId(widget.module.id) ?? widget.module;
+        final live = ModuleStore.shared.byId(widget.module.id) ?? widget.module;
         if (moduleWantsTls(live) != tlsBefore) {
           // Transport changed: close this screen's open Hub socket and
           // reconnect with the new endpoint/transport settings (the login
@@ -639,8 +637,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
   Widget build(BuildContext context) {
     final onSurface = Theme.of(context).colorScheme.onSurface;
     final l10n = AppLocalizations.of(context);
-    final module =
-        ModuleStore.shared.byId(widget.module.id) ?? widget.module;
+    final module = ModuleStore.shared.byId(widget.module.id) ?? widget.module;
     final dash = _dashboard;
     final di = _deviceInfo;
 
@@ -665,8 +662,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
                 IconButton(
                     icon: const Icon(Icons.receipt_long_outlined),
                     tooltip: l10n.systemLogTooltip,
-                    onPressed: () => showSystemLogScreen(
-                        context, module)),
+                    onPressed: () => showSystemLogScreen(context, module)),
                 IconButton(
                     icon: const Icon(Icons.edit_outlined),
                     onPressed: _editModuleInfo),
@@ -689,7 +685,8 @@ class _HubControlScreenState extends State<HubControlScreen> {
                     children: [
                       Text('Hub sign-in required',
                           style: TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
                               color: Theme.of(context)
                                   .colorScheme
                                   .onErrorContainer)),
@@ -700,9 +697,8 @@ class _HubControlScreenState extends State<HubControlScreen> {
                                 'send commands (stored in the OS secure '
                                 'credential store).',
                         style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onErrorContainer),
+                            color:
+                                Theme.of(context).colorScheme.onErrorContainer),
                       ),
                       const SizedBox(height: 8),
                       FilledButton.icon(
@@ -731,12 +727,10 @@ class _HubControlScreenState extends State<HubControlScreen> {
                       if (di.model != null)
                         _infoRow('Model', di.model!, onSurface),
                       if (di.appFirmware != null)
-                        _infoRow(
-                            'Firmware', di.appFirmware!, onSurface),
+                        _infoRow('Firmware', di.appFirmware!, onSurface),
                       if (di.serial != null)
                         _infoRow('Serial', di.serial!, onSurface),
-                      if (di.mac != null)
-                        _infoRow('MAC', di.mac!, onSurface),
+                      if (di.mac != null) _infoRow('MAC', di.mac!, onSurface),
                     ],
                   ),
                 ),
@@ -766,10 +760,8 @@ class _HubControlScreenState extends State<HubControlScreen> {
                             '${dash.cpuTemp!.toStringAsFixed(1)} °C',
                             onSurface),
                       if (dash.cpuUsage != null)
-                        _infoRow(
-                            'CPU Usage',
-                            '${dash.cpuUsage!.toStringAsFixed(1)}%',
-                            onSurface),
+                        _infoRow('CPU Usage',
+                            '${dash.cpuUsage!.toStringAsFixed(1)}%', onSurface),
                       if (dash.memoryUsage != null)
                         _infoRow(
                             'Memory',
@@ -783,8 +775,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
 
             if (dash != null && dash.outputs.isNotEmpty) ...[
               const SizedBox(height: 24),
-              SectionHeader(
-                  'Outputs (${dash.outputs.length})'),
+              SectionHeader('Outputs (${dash.outputs.length})'),
               for (int i = 0; i < dash.outputs.length; i++)
                 Padding(
                   padding:
@@ -792,8 +783,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
                   child: _HubOutputRow(
                     index: i,
                     output: dash.outputs[i],
-                    onToggle: () => _toggleOutput(
-                        i, !dash.outputs[i].state),
+                    onToggle: () => _toggleOutput(i, !dash.outputs[i].state),
                     onPulse: () => _pulseOutput(i),
                     onEdit: () => _editChannel(i),
                     l10n: l10n,
@@ -813,8 +803,8 @@ class _HubControlScreenState extends State<HubControlScreen> {
                   child: _HubModbusOutputRow(
                     index: i,
                     output: dash.modbusOutputs[i],
-                    onToggle: () => _toggleModbusOutput(
-                        i, !dash.modbusOutputs[i].state),
+                    onToggle: () =>
+                        _toggleModbusOutput(i, !dash.modbusOutputs[i].state),
                     onRestart: () => _restartModbusOutput(i),
                     onEdit: () => _editChannel(i),
                     l10n: l10n,
@@ -848,8 +838,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
                       SizedBox(
                           width: 32,
                           height: 32,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2.6)),
+                          child: CircularProgressIndicator(strokeWidth: 2.6)),
                       const SizedBox(height: 12),
                       Text('Loading...'),
                     ],
@@ -863,8 +852,7 @@ class _HubControlScreenState extends State<HubControlScreen> {
     );
   }
 
-  Widget _infoRow(String label, String value, Color onSurface) =>
-      Padding(
+  Widget _infoRow(String label, String value, Color onSurface) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 2),
         child: Row(children: [
           Text(label,
@@ -909,15 +897,14 @@ class _HubOutputRow extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            IconAvatar(
-                icon: Icons.electrical_services,
-                filled: state),
+            IconAvatar(icon: Icons.electrical_services, filled: state),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(output.name.isNotEmpty
+                  Text(
+                      output.name.isNotEmpty
                           ? output.name
                           : 'Output ${index + 1}',
                       style: const TextStyle(
@@ -936,13 +923,10 @@ class _HubOutputRow extends StatelessWidget {
                         height: 48,
                         child: state
                             ? FilledButton(
-                                onPressed: turnOffDisabled
-                                    ? null
-                                    : onToggle,
+                                onPressed: turnOffDisabled ? null : onToggle,
                                 child: Text(l10n.on))
                             : OutlinedButton(
-                                onPressed: onToggle,
-                                child: Text(l10n.off)),
+                                onPressed: onToggle, child: Text(l10n.off)),
                       ),
                       const SizedBox(width: 8),
                       OutlinedButton(
@@ -955,8 +939,7 @@ class _HubOutputRow extends StatelessWidget {
               ),
             ),
             IconButton(
-                icon: const Icon(Icons.edit_outlined),
-                onPressed: onEdit),
+                icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
           ],
         ),
       ),
@@ -995,15 +978,14 @@ class _HubModbusOutputRow extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            IconAvatar(
-                icon: Icons.electrical_services,
-                filled: state),
+            IconAvatar(icon: Icons.electrical_services, filled: state),
             const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(output.name.isNotEmpty
+                  Text(
+                      output.name.isNotEmpty
                           ? output.name
                           : 'Modbus Output ${index + 1}',
                       style: const TextStyle(
@@ -1022,19 +1004,14 @@ class _HubModbusOutputRow extends StatelessWidget {
                         height: 48,
                         child: state
                             ? FilledButton(
-                                onPressed: turnOffDisabled
-                                    ? null
-                                    : onToggle,
+                                onPressed: turnOffDisabled ? null : onToggle,
                                 child: Text(l10n.on))
                             : OutlinedButton(
-                                onPressed: onToggle,
-                                child: Text(l10n.off)),
+                                onPressed: onToggle, child: Text(l10n.off)),
                       ),
                       const SizedBox(width: 8),
                       OutlinedButton(
-                        onPressed: restartDisabled
-                            ? null
-                            : onRestart,
+                        onPressed: restartDisabled ? null : onRestart,
                         child: const Text('Restart'),
                       ),
                     ],
@@ -1043,8 +1020,7 @@ class _HubModbusOutputRow extends StatelessWidget {
               ),
             ),
             IconButton(
-                icon: const Icon(Icons.edit_outlined),
-                onPressed: onEdit),
+                icon: const Icon(Icons.edit_outlined), onPressed: onEdit),
           ],
         ),
       ),
@@ -1106,8 +1082,8 @@ class _HubLoginDialogState extends State<_HubLoginDialog> {
     final username = _usernameController.text.trim();
     final password = _passwordController.text;
     if (username.isEmpty || password.isEmpty) {
-      setState(() => _error =
-          'Enter the Hub administrator username and password.');
+      setState(
+          () => _error = 'Enter the Hub administrator username and password.');
       return;
     }
     setState(() {
@@ -1184,8 +1160,7 @@ class _HubLoginDialogState extends State<_HubLoginDialog> {
       ),
       actions: [
         TextButton(
-          onPressed:
-              _signingIn ? null : () => Navigator.of(context).pop(false),
+          onPressed: _signingIn ? null : () => Navigator.of(context).pop(false),
           child: const Text('Cancel'),
         ),
         FilledButton(
@@ -1217,9 +1192,9 @@ class _VirtualTagEditResult {
   final String value;
 }
 
-/// One virtual-tag card in the bottom "Virtual tags (vio)" section: display
-/// name, stored tag name, current value, and an edit button, matching the
-/// output-row card style.
+/// One virtual-tag card in the bottom "Virtual tags (vio)" section: a single
+/// line with the display name, stored tag name, current value, and an edit
+/// button.
 class _HubVirtualTagCard extends StatelessWidget {
   const _HubVirtualTagCard({
     required this.tag,
@@ -1236,49 +1211,35 @@ class _HubVirtualTagCard extends StatelessWidget {
     final name = (tag.name == null || tag.name!.isEmpty) ? '' : tag.name!;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         child: Row(
           children: [
-            const IconAvatar(icon: Icons.tag),
-            const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name.isNotEmpty ? name : tag.tagName,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 16)),
-                  const SizedBox(height: 2),
-                  Text(tag.tagName,
-                      style: TextStyle(
-                          fontSize: 12,
-                          color: onSurface.withValues(alpha: 0.5))),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Text('Value',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: onSurface.withValues(alpha: 0.55))),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          tag.value,
-                          textAlign: TextAlign.end,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+              child: Text(
+                name.isNotEmpty ? name : tag.tagName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
               ),
             ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                tag.value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(width: 4),
             IconButton(
-                icon: const Icon(Icons.edit_outlined),
-                onPressed: onEdit),
+              visualDensity: VisualDensity.compact,
+              icon: const Icon(Icons.edit_outlined, size: 20),
+              onPressed: onEdit,
+            ),
           ],
         ),
       ),

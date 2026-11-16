@@ -6,6 +6,38 @@ match `pubspec.yaml` (`version: x.y.z+build`).
 
 ## [Unreleased]
 
+## [1.0.34] - 2026-11-16
+
+### Added - editable Hub virtual tags
+
+- The Hub control screen's read-only **Virtual tags** card is replaced by a
+  **Virtual tags (vio)** section at the bottom of the screen. Every tag card
+  shows the tag's **Name**, **tag name** and **Value** with an edit button.
+- The edit dialog offers Name / Tag name / Value fields with Save and
+  Cancel. Save writes the value to the Hub through the `set_tag` command
+  (`vio.<tag_name>` over the live authenticated session) and caches the
+  edited name / tag name on the module so the section reflects them until
+  the next catalogue refresh.
+
+### Changed
+
+- The TLS toggle labels are shortened ("TLS (secure)" / "Uses encrypted
+  TLS"; RO: "TLS (securizat)" / "Folosește TLS criptat") in the
+  edit-module-info dialog and the manual add-module form.
+
+### Fixed
+
+- Saving the edit-module-info dialog with a toggled TLS transport now
+  **closes every socket opened for the module** and reconnects: the
+  persistent status units are disposed (auto-reconnect timers stopped) and
+  the module is re-probed, and the Hub control screen closes and re-opens
+  its own Hub session with the new transport. Previously a TLS → plaintext
+  (or plaintext → TLS) switch could keep dialing the old transport.
+- Root cause on the unit layer: the persistent-unit reuse check compared
+  only the CA asset and expected device ID, which are identical whether the
+  dial is TLS or plaintext. It now also requires the transport itself
+  (`tls != null`) to match.
+
 ### Fixed - "events arrive, no command works" on a mis-typed module
 
 A module record typed `hub` that actually fronts another Control API family
@@ -37,9 +69,9 @@ correct in both framings). Fixes:
 The transport for a module's Control API port (5008) is chosen explicitly
 with a TLS toggle button in the module configuration screens:
 
-- The toggle ("TLS (secure) connection") is shown **only for modules with
-  the `remote` connection type** (hostname / port-forwarding address) - in
-  the edit-module-info dialog and in the manual-add form.
+- The toggle ("TLS (secure)" / "Uses encrypted TLS") is shown **only for
+  modules with the `remote` connection type** (hostname / port-forwarding
+  address) - in the edit-module-info dialog and in the manual-add form.
 - **Enabled = TLS, disabled = plaintext (non-TLS).** There is no automatic
   fallback in either direction after a failed connect
   (doc/Soleux_Mobile_Control_API_TLS_Integration.md §"Connection sequence").
