@@ -54,9 +54,9 @@ bool isLiteralIpAddress(String host) =>
 /// There is deliberately **no plaintext fallback** after a TLS failure
 /// (doc §"Connection sequence" step 2): the transport is chosen explicitly
 /// per module (the TLS toggle in the module configuration screen,
-/// [DeviceModule.tlsEnabled]; remote modules default to TLS). A failed TLS
-/// dial returns null immediately - the handshake deadline below bounds the
-/// handshake, which dart:io's connect `timeout` does not.
+/// [DeviceModule.tlsEnabled] - enabled = TLS, disabled = plaintext). A
+/// failed TLS dial returns null immediately - the handshake deadline below
+/// bounds the handshake, which dart:io's connect `timeout` does not.
 Future<Socket?> connectModuleSocket(
   String host,
   int port, {
@@ -117,7 +117,8 @@ Future<Socket?> connectModuleSocket(
 /// The TLS dial is bounded by [_tlsDialWithDeadline] (dart:io's connect
 /// `timeout` does not cover the handshake) and **never** falls back to
 /// plaintext: the module configuration screen's TLS toggle
-/// ([DeviceModule.tlsEnabled]) selects the transport explicitly.
+/// ([DeviceModule.tlsEnabled]) selects the transport explicitly (enabled =
+/// TLS, disabled = plaintext).
 Future<Socket?> _dialSingle(
   InternetAddress address,
   int port, {

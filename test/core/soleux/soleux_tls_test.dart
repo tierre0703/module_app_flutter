@@ -126,13 +126,16 @@ void main() {
       expect(moduleWantsTls(_module(apiTls: true), forced: null), isTrue);
     });
 
-    test('a remote-connection module is dialled TLS-first regardless of '
-        'the advertised API_TLS flag', () {
+    test('a remote-connection module follows the advertised API_TLS flag '
+        'until the toggle is used', () {
+      // No forced remote default: an untouched toggle leaves the module on
+      // its natural (flag-based) transport, so a plaintext remote device
+      // keeps working.
       expect(
           moduleWantsTls(_module(apiTls: null, connectionType: 'remote')),
-          isTrue);
+          isFalse);
       expect(moduleWantsTls(_module(apiTls: false, connectionType: 'remote')),
-          isTrue);
+          isFalse);
       expect(moduleWantsTls(_module(apiTls: true, connectionType: 'remote')),
           isTrue);
       // Local-network and cloud modules keep the advertised-flag decision.
@@ -144,26 +147,30 @@ void main() {
           isFalse);
     });
 
-    test('the code-level switch still wins over the remote TLS-first rule',
+    test('the code-level switch wins over the module flag and the toggle',
         () {
       expect(
           moduleWantsTls(_module(apiTls: true, connectionType: 'remote'),
               forced: false),
           isFalse);
+      expect(
+          moduleWantsTls(_module(apiTls: false, tlsEnabled: true),
+              forced: false),
+          isFalse);
     });
 
-    test('the explicit configuration-screen toggle overrides every '
-        'per-module default', () {
+    test('the explicit configuration-screen toggle overrides the automatic '
+        'decision: enabled = TLS, disabled = plaintext', () {
       // Toggle ON forces TLS even for a plaintext-flagged local module.
       expect(moduleWantsTls(_module(apiTls: false, tlsEnabled: true)), isTrue);
-      // Toggle OFF forces plaintext even for a remote module (no automatic
-      // fallback/downgrade in either direction).
+      // Toggle OFF forces plaintext even for a TLS-advertising remote
+      // module (no automatic fallback/downgrade in either direction).
       expect(
           moduleWantsTls(
               _module(apiTls: true, connectionType: 'remote',
                   tlsEnabled: false)),
           isFalse);
-      // An untouched toggle (null) keeps the previous decision chain.
+      // An untouched toggle (null) keeps the automatic decision chain.
       expect(
           moduleWantsTls(_module(apiTls: false, tlsEnabled: null)), isFalse);
     });

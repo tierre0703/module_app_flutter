@@ -599,12 +599,12 @@ class DeviceModule {
   String? connectionType;
 
   /// Explicit TLS selection from the module configuration screen
-  /// (edit-module-info dialog / manual add): `true` dials the module's
-  /// Control API port with TLS, `false` keeps it plaintext. Null until the
-  /// user saved a configuration once - the effective decision then follows
-  /// the code-level `AppConfig.apiTlsEnabled` switch, the remote-connection
-  /// TLS default and the discovery-advertised `API_TLS` flag
-  /// (see [moduleWantsTls] in `core/soleux/soleux_tls.dart`).
+  /// (edit-module-info dialog / manual add, remote connection type only):
+  /// `true` dials the module's Control API port with TLS, `false` keeps it
+  /// plaintext. Null until the user chose once - the effective decision
+  /// then follows the code-level `AppConfig.apiTlsEnabled` switch and the
+  /// discovery-advertised `API_TLS` flag (see [moduleWantsTls] in
+  /// `core/soleux/soleux_tls.dart`).
   bool? tlsEnabled;
 
   /// Control API v3 TCP port when advertised by discovery (normally 5008).

@@ -8,22 +8,22 @@ match `pubspec.yaml` (`version: x.y.z+build`).
 
 ### Changed - explicit TLS toggle for remote modules
 
-The automatic TLS-first/plaintext-fallback dialling is gone. The transport
-for a module's Control API port (5008) is now chosen **explicitly** with a
-TLS toggle button in the module configuration screens:
+The transport for a module's Control API port (5008) is chosen explicitly
+with a TLS toggle button in the module configuration screens:
 
 - The toggle ("TLS (secure) connection") is shown **only for modules with
   the `remote` connection type** (hostname / port-forwarding address) - in
-  the edit-module-info dialog and in the manual-add form, defaulting to ON
-  there (a remote endpoint is expected to serve TLS).
-- Toggle ON dials TLS; toggle OFF keeps plaintext. There is **no automatic
-  fallback** in either direction after a failed connect
+  the edit-module-info dialog and in the manual-add form.
+- **Enabled = TLS, disabled = plaintext (non-TLS).** There is no automatic
+  fallback in either direction after a failed connect
   (doc/Soleux_Mobile_Control_API_TLS_Integration.md §"Connection sequence").
-- Saving a non-remote connection type clears the stored choice, so
-  `local_network`/`cloud` modules follow the automatic decision chain
-  again: code-level `AppConfig.apiTlsEnabled` switch (still wins over
-  everything), the discovery-advertised `API_TLS` flag, device default
-  plaintext.
+- Before the user toggles anything, the module keeps its natural transport
+  (the discovery-advertised `API_TLS` flag / device default plaintext) -
+  a remote module is never forced to TLS on its own; the stored choice
+  (`DeviceModule.tlsEnabled`) overrides the flag once made. Saving a
+  non-remote connection type clears the stored choice.
+- The code-level `AppConfig.apiTlsEnabled` switch (null in every shipped
+  environment) still wins over everything when set.
 - The choice is persisted as `DeviceModule.tlsEnabled` (`null` = never
   chosen).
 
@@ -32,8 +32,9 @@ Implementation:
 - `lib/models/models.dart`: new `tlsEnabled` field (JSON
   round-trips; `null` degrades to the automatic decision).
 - `lib/core/soleux/soleux_tls.dart`: `moduleWantsTls` precedence =
-  code-level switch → explicit toggle → remote default → advertised
-  `API_TLS`; `SoleuxTlsOptions.allowPlaintextFallback` removed.
+  code-level switch → explicit toggle (enabled = TLS / disabled =
+  plaintext) → advertised `API_TLS` → device default plaintext;
+  `SoleuxTlsOptions.allowPlaintextFallback` removed.
 - `lib/services/module_host_resolver.dart`: `_dialSingle` fails closed
   again after a TLS failure. The TLS handshake deadline
   (`_tlsDialWithDeadline`) stays: dart:io's connect `timeout` does not

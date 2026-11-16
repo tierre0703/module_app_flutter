@@ -24,15 +24,12 @@
 //     identity breaks the connection instead of downgrading to plaintext
 //     (doc §"Connection sequence" step 2: never fall back after a TLS
 //     failure). The transport is chosen explicitly: the module
-//     configuration screen's TLS toggle ([DeviceModule.tlsEnabled]) selects
-//     TLS or plaintext per module, and a module with connection type
-//     `remote` (port-forwarding address) defaults to TLS when the toggle
-//     was never saved.
+//     configuration screen's TLS toggle ([DeviceModule.tlsEnabled], remote
+//     connection type only) selects TLS or plaintext per module.
 //
 // The global enable/disable switch is code-level and sits in
 // [AppConfig.apiTlsEnabled]; by default (null) the per-module TLS toggle /
-// remote default / advertised `API_TLS` flag decides
-// (see [moduleWantsTls]).
+// advertised `API_TLS` flag decides (see [moduleWantsTls]).
 import 'dart:convert';
 import 'dart:io';
 
@@ -324,18 +321,15 @@ class SoleuxTlsOptions {
 ///      non-null value enables/disables TLS for every module, ignoring
 ///      everything below;
 ///   2. the module's explicit TLS selection from the configuration screen
-///      ([DeviceModule.tlsEnabled], the toggle button): `true` dials TLS,
-///      `false` keeps plaintext - the user's choice, no automatic
-///      fallback/downgrade in either direction;
-///   3. a module with connection type `remote` (hostname/port-forwarding
-///      address) defaults to TLS;
-///   4. the module's discovery-advertised `API_TLS` (`1` => true, `0` =>
+///      ([DeviceModule.tlsEnabled], the toggle button, remote connection
+///      type only): enabled dials TLS, disabled keeps plaintext - the
+///      user's choice, no automatic fallback/downgrade in either direction;
+///   3. the module's discovery-advertised `API_TLS` (`1` => true, `0` =>
 ///      false); an absent field resolves to the device default `0`
 ///      (plaintext).
 bool moduleWantsTls(DeviceModule module, {bool? forced}) => forced ??
     module.tlsEnabled ??
-    (module.connectionType == 'remote' ||
-        (Env.config.apiTlsEnabled ?? (module.apiTls ?? false)));
+    (Env.config.apiTlsEnabled ?? (module.apiTls ?? false));
 
 /// Builds the TLS dial options for [module], or null when the module's
 /// Control API port must stay plaintext ([moduleWantsTls] false).
@@ -344,7 +338,8 @@ bool moduleWantsTls(DeviceModule module, {bool? forced}) => forced ??
 /// are provisioned lazily on the first dial. Hostname verification follows
 /// the code-level `AppConfig.tlsVerifyHostname` switch (disabled by
 /// default). A failed TLS connect never falls back to plaintext: the module
-/// configuration screen's TLS toggle decides the transport explicitly.
+/// configuration screen's TLS toggle decides the transport explicitly
+/// (enabled = TLS, disabled = plaintext).
 SoleuxTlsOptions? moduleTlsOptions(DeviceModule module, {bool? forced}) {
   if (!moduleWantsTls(module, forced: forced)) return null;
   return SoleuxTlsOptions(

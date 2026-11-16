@@ -53,8 +53,8 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
   String _connectionType = 'local_network';
 
   /// Manual-add TLS selection for the Control API port. The toggle is only
-  /// offered for the `remote` (port-forwarding) connection type, where it
-  /// defaults to TLS until the user explicitly toggles it ([_tlsTouched]).
+  /// offered for the `remote` (port-forwarding) connection type and starts
+  /// OFF (plaintext): enabling it dials TLS, disabling keeps plaintext.
   bool _tlsEnabled = false;
   bool _tlsTouched = false;
 
@@ -571,20 +571,18 @@ class _AddModuleScreenState extends State<AddModuleScreen> {
                   prefixIcon: const Icon(Icons.router_outlined)),
             ),
             // The TLS toggle only applies to a remote (port-forwarding)
-            // connection; it defaults to TLS there unless the user turned
-            // it off.
+            // connection: enabled dials TLS, disabled (default) keeps the
+            // plaintext connection.
             if (_connectionType == 'remote') ...[
               const SizedBox(height: 4),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(l10n.tlsConnection),
                 subtitle: Text(l10n.tlsConnectionHelp),
-                secondary: Icon(_tlsTouched
-                    ? (_tlsEnabled
-                        ? Icons.lock_outline
-                        : Icons.lock_open_outlined)
-                    : Icons.lock_outline),
-                value: _tlsTouched ? _tlsEnabled : true,
+                secondary: Icon(_tlsTouched && _tlsEnabled
+                    ? Icons.lock_outline
+                    : Icons.lock_open_outlined),
+                value: _tlsTouched && _tlsEnabled,
                 onChanged: (value) => setState(() {
                   _tlsTouched = true;
                   _tlsEnabled = value;

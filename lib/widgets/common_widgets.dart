@@ -414,10 +414,10 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
 
   /// TLS transport selection for the module's Control API port. The toggle
   /// is only offered for the `remote` connection type (port-forwarding
-  /// address); it shows the stored choice ([DeviceModule.tlsEnabled]) or,
-  /// before any save, the remote TLS default.
+  /// address); before any save it shows the module's natural transport
+  /// (the advertised `API_TLS` flag), and the saved choice
+  /// ([DeviceModule.tlsEnabled]) overrides it once made.
   bool _tlsEnabled = false;
-  bool _tlsTouched = false;
 
   @override
   void initState() {
@@ -436,11 +436,9 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
         const {'local_network', 'remote', 'cloud'}.contains(m.connectionType)
             ? m.connectionType
             : 'local_network';
-    // A stored choice keeps the toggle untouched (so switching the
-    // connection type away from remote and back does not lose it); without
-    // one the toggle shows the effective default and any save stores it.
+    // The toggle shows the effective transport: the stored choice when the
+    // user made one, otherwise the module's natural (flag-based) decision.
     _tlsEnabled = m.tlsEnabled ?? moduleWantsTls(m);
-    _tlsTouched = m.tlsEnabled != null;
   }
 
   @override
@@ -550,13 +548,8 @@ class _ModuleInfoDialogState extends State<_ModuleInfoDialog> {
                   ),
                 ),
               ],
-              onChanged: (value) => setState(() {
-                _connectionType = value;
-                // The TLS toggle only concerns the remote (port-forwarding)
-                // connection type; switching to remote defaults the toggle
-                // to TLS unless the user already picked explicitly.
-                if (value == 'remote' && !_tlsTouched) _tlsEnabled = true;
-              }),
+              onChanged: (value) =>
+                  setState(() => _connectionType = value),
             ),
             const SizedBox(height: 12),
             TextField(
