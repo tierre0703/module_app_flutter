@@ -459,6 +459,67 @@ class _HubControlScreenState extends State<HubControlScreen> {
     }
   }
 
+  /// Opens the virtual-tag edit dialog ([_VirtualTagEditDialog]) and applies
+  /// the confirmed edits: the new `value` is pushed to the Hub through
+  /// `set_tag` (addressed by the tag's stored `tag_name` over the
+  /// `vio.`-prefixed wire reference, doc/Modbus_Hub_Control_API.md
+  /// §"Identity, dashboard, output control, and tags"), while the display
+  /// `name`/`tagName` edits are cached on the module's persisted hub
+  /// information ([DeviceModule.virtualTags]).
+  Future<void> _editVirtualTag(HubVirtualTag tag) async {
+    if (_editDialogOpen) return;
+    _editDialogOpen = true;
+    try {
+      final result = await showDialog<_VirtualTagEditResult>(
+        context: context,
+        builder: (_) => _VirtualTagEditDialog(tag: tag),
+      );
+      if (result == null || !mounted) return;
+      await _saveVirtualTag(tag, result);
+    } finally {
+      _editDialogOpen = false;
+    }
+  }
+
+  /// Sends the edited virtual tag to the Hub: `set_tag` carries the new
+  /// `value` (the only writable tag field) addressed by the tag's stored
+  /// `tag_name`, and the edited `name`/`tagName` are cached on the module so
+  /// the section reflects them until the next catalogue refresh
+  /// ([_fetchVirtualTags]).
+  Future<void> _saveVirtualTag(
+      HubVirtualTag tag, _VirtualTagEditResult result) async {
+    final client = _hubClient;
+    if (client == null || !client.isConnected) {
+      _showToast('Connect to the Hub first');
+      return;
+    }
+    try {
+      final wireTag =
+          tag.tagName.startsWith('vio.') ? tag.tagName : 'vio.${tag.tagName}';
+      final response = await client.setTag(wireTag, result.value);
+      if (_noteAuthRequired(response)) return;
+      if (response.ok) {
+        ModuleStore.shared.update(widget.module.id, (m) {
+          final index = m.virtualTags.indexWhere((t) => t.tag == tag.tag);
+          if (index >= 0) {
+            m.virtualTags[index] = HubVirtualTag(
+              tag: tag.tag,
+              tagName: result.tagName,
+              name: result.name.isEmpty ? null : result.name,
+              value: result.value,
+            );
+          }
+        });
+        _showToast('Tag saved');
+      } else {
+        _showToast('Tag save failed');
+      }
+    } catch (e, st) {
+      debugPrint('HubControlScreen: set_tag failed: $e\n$st');
+      _showToast('Tag save failed');
+    }
+  }
+
   Future<void> _toggleOutput(int index, bool next) async {
     final client = _hubClient;
     if (client == null || !client.isConnected) return;
@@ -667,30 +728,6 @@ class _HubControlScreenState extends State<HubControlScreen> {
               ),
             ],
 
-            if (module.virtualTags.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(l10n.hubVirtualTagsTitle,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 16)),
-                      const SizedBox(height: 4),
-                      for (final tag in module.virtualTags)
-                        _infoRow(
-                            (tag.name == null || tag.name!.isEmpty)
-                                ? tag.tagName
-                                : tag.name!,
-                            tag.value, onSurface),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-
             if (dash != null) ...[
               const SizedBox(height: 16),
               Card(
@@ -766,6 +803,21 @@ class _HubControlScreenState extends State<HubControlScreen> {
                     onRestart: () => _restartModbusOutput(i),
                     onEdit: () => _editChannel(i),
                     l10n: l10n,
+                    onSurface: onSurface,
+                  ),
+                ),
+            ],
+
+            if (module.virtualTags.isNotEmpty) ...[
+              const SizedBox(height: 24),
+              SectionHeader(l10n.hubVirtualTagsTitle),
+              for (final tag in module.virtualTags)
+                Padding(
+                  padding:
+                      const EdgeInsets.only(bottom: AppSpacing.betweenCards),
+                  child: _HubVirtualTagCard(
+                    tag: tag,
+                    onEdit: () => _editVirtualTag(tag),
                     onSurface: onSurface,
                   ),
                 ),
@@ -1130,6 +1182,193 @@ class _HubLoginDialogState extends State<_HubLoginDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : const Text('Sign in'),
+        ),
+      ],
+    );
+  }
+}
+
+/// The confirmed edits of [_VirtualTagEditDialog]: display name, stored tag
+/// name, and value.
+class _VirtualTagEditResult {
+  const _VirtualTagEditResult({
+    required this.name,
+    required this.tagName,
+    required this.value,
+  });
+
+  final String name;
+  final String tagName;
+  final String value;
+}
+
+/// One virtual-tag card in the bottom "Virtual tags (vio)" section: display
+/// name, stored tag name, current value, and an edit button, matching the
+/// output-row card style.
+class _HubVirtualTagCard extends StatelessWidget {
+  const _HubVirtualTagCard({
+    required this.tag,
+    required this.onEdit,
+    required this.onSurface,
+  });
+
+  final HubVirtualTag tag;
+  final VoidCallback onEdit;
+  final Color onSurface;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (tag.name == null || tag.name!.isEmpty) ? '' : tag.name!;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            const IconAvatar(icon: Icons.tag),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(name.isNotEmpty ? name : tag.tagName,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w700, fontSize: 16)),
+                  const SizedBox(height: 2),
+                  Text(tag.tagName,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: onSurface.withValues(alpha: 0.5))),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Text('Value',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: onSurface.withValues(alpha: 0.55))),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          tag.value,
+                          textAlign: TextAlign.end,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: onEdit),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The virtual-tag edit dialog: Name, tagName, and value fields with
+/// Save/Cancel. Pops a [_VirtualTagEditResult] on Save and `null` on Cancel;
+/// the caller ([_HubControlScreenState._editVirtualTag]) performs the
+/// `set_tag` write.
+///
+/// Owns its text controllers so they live exactly as long as the dialog's
+/// widget subtree - the route stays mounted through the exit animation, and
+/// disposing controllers when [State.dispose] runs (after the animation) is
+/// what keeps the element tree consistent (same reason as [_HubLoginDialog]).
+class _VirtualTagEditDialog extends StatefulWidget {
+  const _VirtualTagEditDialog({required this.tag});
+
+  final HubVirtualTag tag;
+
+  @override
+  State<_VirtualTagEditDialog> createState() => _VirtualTagEditDialogState();
+}
+
+class _VirtualTagEditDialogState extends State<_VirtualTagEditDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _tagNameController;
+  late final TextEditingController _valueController;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(text: widget.tag.name ?? '');
+    _tagNameController = TextEditingController(text: widget.tag.tagName);
+    _valueController = TextEditingController(text: widget.tag.value);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _tagNameController.dispose();
+    _valueController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final tagName = _tagNameController.text.trim();
+    final value = _valueController.text.trim();
+    if (tagName.isEmpty || value.isEmpty) {
+      setState(() => _error = 'Tag name and value are required.');
+      return;
+    }
+    Navigator.of(context).pop(_VirtualTagEditResult(
+      name: _nameController.text.trim(),
+      tagName: tagName,
+      value: value,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit virtual tag'),
+      scrollable: true,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_error != null) ...[
+            Text(_error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error)),
+            const SizedBox(height: 8),
+          ],
+          TextField(
+            controller: _nameController,
+            decoration: const InputDecoration(labelText: 'Name'),
+            autocorrect: false,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _tagNameController,
+            decoration: const InputDecoration(labelText: 'Tag name'),
+            autocorrect: false,
+            enableSuggestions: false,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _valueController,
+            decoration: const InputDecoration(labelText: 'Value'),
+            autocorrect: false,
+            enableSuggestions: false,
+            onSubmitted: (_) => _save(),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _save,
+          child: const Text('Save'),
         ),
       ],
     );
