@@ -143,6 +143,21 @@ abstract final class SoleuxDeviceFamilies {
     return _byJsonDevice[device.trim().toLowerCase()];
   }
 
+  /// Resolves the [ModuleType] a protocol-2 Control API `hello` result
+  /// identifies: the result's `device` field names the family
+  /// (`relay_module`, `dimmer`, `modbus_hub`, ...). Null for an unknown or
+  /// absent device field. Used to re-detect a module's type when its stored
+  /// type fronts the wrong protocol (e.g. a record typed `hub` that actually
+  /// fronts a dimmer: every protocol-1 command is rejected while the
+  /// device's protocol-2 broadcasts keep flowing).
+  static ModuleType? moduleTypeFromHelloResult(Map<String, dynamic>? result) {
+    if (result == null) return null;
+    final device = result['device'];
+    final family =
+        fromJsonDevice(device is String ? device : null);
+    return family?.defaultModuleType;
+  }
+
   /// All known family GUIDs, lower-cased (for logging/dedup keys).
   static Set<String> get knownGuids => _byGuid.keys.toSet();
 }

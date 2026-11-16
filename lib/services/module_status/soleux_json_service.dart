@@ -374,6 +374,16 @@ class SoleuxJsonService extends SoleuxControlApiService {
 
   @override
   void dispose() {
+    detach();
+    _connection.dispose();
+  }
+
+  /// Tears the JSON service down without disposing its connection: cancels
+  /// the stream listener, the keep-alive timer and every pending request.
+  /// For callers that wrap a connection shared with another protocol client
+  /// (e.g. the hub probe's type re-detection) - the connection's owner
+  /// disposes it.
+  void detach() {
     _stopKeepAlive();
     for (final pending in _pending.values) {
       pending.timer.cancel();
@@ -387,7 +397,6 @@ class SoleuxJsonService extends SoleuxControlApiService {
     _events.close();
     _jsonEvents.close();
     _deviceEvents.close();
-    _connection.dispose();
   }
 
   /// Debug-friendly state for logging.

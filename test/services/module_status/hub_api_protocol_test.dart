@@ -41,6 +41,12 @@ class _FakeHub {
   bool requireAuth = false;
   bool _authenticated = false;
 
+  /// Whether the fake answers `hello` with the structured protocol-2
+  /// rejection a non-Hub Control API device sends to protocol-1 requests
+  /// (`unsupported protocol version`) - the live signature of a module
+  /// record typed `hub` that fronts another family.
+  bool rejectProtocol1 = false;
+
   void _handle(Socket socket) {
     final buffer = StringBuffer();
     socket.listen((bytes) {
@@ -69,6 +75,21 @@ class _FakeHub {
     final action = request['action'];
     final params = request['params'] as Map<String, dynamic>;
 
+    if (rejectProtocol1 && action == 'hello') {
+      // The exact answer the SLX DC Dimmer firmware sends to a protocol-1
+      // request (captured on the wire, 2026-11-16).
+      socket.write(
+          '${jsonEncode({
+            'ok': false,
+            'protocol': 2,
+            'id': id,
+            'error': {
+              'code': 'invalid_request',
+              'message': 'unsupported protocol version',
+            },
+          })}\r\n');
+      return;
+    }
     if (action == 'authenticate') {
       _authenticated = params['username'] == 'admin' &&
           params['password'] == 'secret';
@@ -197,6 +218,53 @@ Future<(HubJsonProtocol, StreamSubscription<String>, ModuleTcpConnection)>
 }
 
 void main() {
+  test('HubCommandResponse.fromJson keeps the structured {code, message} '
+      'error object some firmware answers with', () {
+    final response = HubCommandResponse.fromJson(const {
+      'id': 7,
+      'ok': false,
+      'protocol': 2,
+      'error': {
+        'code': 'invalid_request',
+        'message': 'unsupported protocol version',
+      },
+    });
+    expect(response.ok, isFalse);
+    expect(response.errorCode, 'invalid_request');
+    expect(response.error, 'invalid_request: unsupported protocol version');
+  });
+
+  test('HubCommandResponse.fromJson keeps the documented string error', () {
+    final response = HubCommandResponse.fromJson(const {
+      'id': 8,
+      'ok': false,
+      'error': 'authentication_required',
+    });
+    expect(response.error, 'authentication_required');
+    expect(response.errorCode, isNull);
+  });
+
+  test('a protocol-1 request answered with the structured rejection '
+      'completes with the error (never a timeout)', () async {
+    final hub = await _FakeHub.start();
+    hub.rejectProtocol1 = true;
+    final (protocol, pump, connection) = await _openSession(hub);
+    try {
+      final response = await protocol
+          .hello()
+          .timeout(const Duration(seconds: 5),
+              onTimeout: () => throw TimeoutException(
+                  'the rejection response was never matched'));
+      expect(response.ok, isFalse);
+      expect(response.errorCode, 'invalid_request');
+      expect(response.error, 'invalid_request: unsupported protocol version');
+    } finally {
+      await pump.cancel();
+      protocol.dispose();
+      hub.server.close();
+    }
+  });
+
   test('authenticate performs the TLS login contract and clears the '
       'auth-required flag', () async {
     final hub = await _FakeHub.start();

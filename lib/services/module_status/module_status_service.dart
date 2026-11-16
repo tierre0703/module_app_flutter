@@ -30,12 +30,12 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/logger/network_debug_logger.dart';
 import '../../core/config/env.dart';
 import '../../core/soleux/soleux_device_event.dart';
+import '../../core/soleux/soleux_device_family.dart';
 import '../../core/soleux/soleux_json_protocol.dart';
 import '../../core/soleux/soleux_tls.dart';
 import '../../models/models.dart';
@@ -1296,7 +1296,11 @@ class ModuleStatusService {
           for (final line in splitter.add(text)) {
             final response = SoleuxJsonResponse.maybeParse(line);
             if (response != null && response.id == 1) {
-              reachable = response.ok;
+              // Any id-echoed Control API response proves the endpoint is
+              // alive and speaking the protocol - including a structured
+              // error such as a dimmer's `unknown_action` answer to `ping`
+              // (the AC/DC Dimmer profile does not implement ping).
+              reachable = true;
               if (!done.isCompleted) done.complete();
             }
           }
@@ -1618,6 +1622,16 @@ class ModuleStatusService {
           _applyReachability(live, alive: true);
           return;
         }
+        // Not a protocol-1 Hub after all: a module record typed `hub` that
+        // fronts another Control API family (relay, dimmer, PDU - often
+        // after the endpoint was repointed) answers every protocol-1
+        // request with `unsupported protocol version` while its protocol-2
+        // broadcasts keep flowing ("events arrive, no command works").
+        // Re-detect the family with a protocol-2 hello before giving up.
+        if (await _redetectModuleType(live, connection)) {
+          _applyReachability(live, alive: true);
+          return;
+        }
         _applyReachability(live, alive: false);
         return;
       }
@@ -1686,6 +1700,47 @@ class ModuleStatusService {
     } finally {
       await pump.cancel();
       protocol.dispose();
+    }
+  }
+
+  /// Re-detects the device family of [live] with a protocol-2 Control API
+  /// `hello` on the probe [connection] that just rejected the protocol-1
+  /// Hub handshake.
+  ///
+  /// The `hello` result's `device` field names the family
+  /// (`relay_module`, `dimmer`, `modbus_hub`, ...). When it maps to a
+  /// different [ModuleType] than the stored one, the type is corrected in
+  /// place and committed, so the next refresh drives the module with its
+  /// real protocol. Returns true when the device answered a protocol-2
+  /// hello (it is alive, whatever its type).
+  Future<bool> _redetectModuleType(
+      DeviceModule live, ModuleTcpConnection connection) async {
+    SoleuxJsonService? jsonUnit;
+    try {
+      // Wraps the probe's connection without owning it: both protocol
+      // clients listen on the same broadcast stream, and the connection is
+      // disposed by the probe's own finally block.
+      jsonUnit = SoleuxJsonService(connection: connection);
+      final hello = await jsonUnit.hello(timeout: _jsonHelloTimeout);
+      if (!hello.ok) return false;
+      final detectedType =
+          SoleuxDeviceFamilies.moduleTypeFromHelloResult(hello.result);
+      if (detectedType == null) return false;
+      if (detectedType == live.type) return true;
+      debugPrint('ModuleStatusService: ${live.name} (${live.id}) identifies '
+          'as a ${detectedType.label} module (stored type was '
+          '${live.type.label}) - correcting the module type');
+      live.type = detectedType;
+      _scheduleCommit();
+      return true;
+    } catch (e, st) {
+      debugPrint('ModuleStatusService: type re-detection for ${live.name} '
+          '(${live.id}) failed: $e\n$st');
+      return false;
+    } finally {
+      // Detach the JSON listener and its keep-alive timer, but keep the
+      // shared connection open for the probe's remaining teardown.
+      jsonUnit?.detach();
     }
   }
 

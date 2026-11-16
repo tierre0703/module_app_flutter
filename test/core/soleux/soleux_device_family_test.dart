@@ -45,6 +45,42 @@ void main() {
           SoleuxDeviceFamily.pdu10kw);
       expect(SoleuxDeviceFamilies.fromJsonDevice('nope'), isNull);
     });
+
+    test('moduleTypeFromHelloResult maps the hello device to the module type',
+        () {
+      // The live failure mode: a record typed `hub` that actually fronts a
+      // SLX DC Dimmer - the device's own hello result identifies it.
+      expect(
+          SoleuxDeviceFamilies.moduleTypeFromHelloResult(const {
+            'device': 'dimmer',
+            'name': 'SLX DC Dimmer-20.36',
+            'dimmer_type': 'dc',
+            'output_count': 4,
+          }),
+          ModuleType.dimmerDc);
+      expect(
+          SoleuxDeviceFamilies.moduleTypeFromHelloResult(
+              const {'device': 'relay_module'}),
+          ModuleType.relay);
+      expect(
+          SoleuxDeviceFamilies.moduleTypeFromHelloResult(
+              const {'device': 'modbus_hub'}),
+          ModuleType.hub);
+      expect(
+          SoleuxDeviceFamilies.moduleTypeFromHelloResult(
+              const {'device': 'pdu_energy_meter'}),
+          ModuleType.relay);
+    });
+
+    test('moduleTypeFromHelloResult degrades gracefully', () {
+      expect(SoleuxDeviceFamilies.moduleTypeFromHelloResult(null), isNull);
+      expect(SoleuxDeviceFamilies.moduleTypeFromHelloResult(const {}),
+          isNull);
+      expect(SoleuxDeviceFamilies.moduleTypeFromHelloResult(
+          const {'device': 42}), isNull);
+      expect(SoleuxDeviceFamilies.moduleTypeFromHelloResult(
+          const {'device': 'unknown-thing'}), isNull);
+    });
   });
 
   group('Default app module mapping', () {

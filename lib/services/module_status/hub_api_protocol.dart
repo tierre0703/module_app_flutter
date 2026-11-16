@@ -42,24 +42,46 @@ class HubCommandResponse {
   final int id;
   final bool ok;
   final Map<String, dynamic>? result;
+
+  /// The human-readable error: either the raw string (the documented Hub TCP
+  /// error shape) or a summary of the protocol-2 `{code, message}` object
+  /// some firmware answers with (e.g. a protocol-2 device rejecting a
+  /// protocol-1 request with `unsupported protocol version`).
   final String? error;
+
+  /// The structured error `code` when the firmware answered with the
+  /// `{code, message}` error object.
+  final String? errorCode;
 
   const HubCommandResponse({
     required this.id,
     required this.ok,
     this.result,
     this.error,
+    this.errorCode,
   });
 
   factory HubCommandResponse.fromJson(Map<String, dynamic> json) {
     final err = json['error'];
+    String? summary;
+    String? code;
+    if (err is String) {
+      summary = err;
+    } else if (err is Map) {
+      final message = err['message'];
+      code = err['code'] is String ? (err['code'] as String) : null;
+      summary = message is String && message.isNotEmpty
+          ? (code != null && code.isNotEmpty ? '$code: $message' : message)
+          : (code != null && code.isNotEmpty ? code : null);
+    }
     return HubCommandResponse(
       id: json['id'] is num ? (json['id'] as num).toInt() : 0,
       ok: json['ok'] is bool ? json['ok'] : false,
       result: json['result'] is Map
           ? Map<String, dynamic>.from(json['result'])
           : null,
-      error: err is String ? err : null,
+      error: summary,
+      errorCode: code,
     );
   }
 }
@@ -659,7 +681,9 @@ class HubJsonProtocol {
 
       // Command response: match by id to pending completer.
       final response = HubCommandResponse.fromJson(map);
-      if (!response.ok && response.error == 'authentication_required') {
+      if (!response.ok &&
+          (response.error == 'authentication_required' ||
+              response.errorCode == 'authentication_required')) {
         _authenticationRequired = true;
       }
       final completer = _pending.remove(response.id);

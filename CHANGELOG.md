@@ -6,6 +6,32 @@ match `pubspec.yaml` (`version: x.y.z+build`).
 
 ## [Unreleased]
 
+### Fixed - "events arrive, no command works" on a mis-typed module
+
+A module record typed `hub` that actually fronts another Control API family
+(e.g. a SLX DC Dimmer behind a port forward) speaks the Hub's protocol 1 -
+which the firmware rejects (`unsupported protocol version`) - while its
+protocol-2 broadcasts keep flowing. Diagnosed against the live device and
+the repo's dummy server (the app's transport/framing/id-matching verified
+correct in both framings). Fixes:
+
+- **Auto type re-detection** (`ModuleStatusService._probeHub`): when the
+  protocol-1 hello of a hub probe is rejected (not an auth issue), the
+  probe asks the device for its identity with a protocol-2 `hello`
+  (`device` field) and corrects the stored module type when it differs
+  (`SoleuxDeviceFamilies.moduleTypeFromHelloResult`); the next refresh then
+  drives the module with its real protocol. The device answering a
+  protocol-2 hello marks it reachable.
+- **Structured errors on the Hub protocol** (`HubCommandResponse`): the
+  `{code, message}` error objects some firmware answers with are no longer
+  dropped - the command completes with `code: message` text and an
+  `errorCode` field (the `authentication_required` detection covers both
+  shapes), instead of looking like a timeout.
+- **Ping-based reachability vs dimmers** (`_pollJsonPing`): any
+  id-echoed Control API response now proves the endpoint alive; previously
+  a dimmer's `unknown_action` answer to `ping` (`ok:false`) reported the
+  reachable device as unreachable.
+
 ### Changed - explicit TLS toggle for remote modules
 
 The transport for a module's Control API port (5008) is chosen explicitly
