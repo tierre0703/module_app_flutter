@@ -1193,8 +1193,8 @@ class _VirtualTagEditResult {
 }
 
 /// One virtual-tag card in the bottom "Virtual tags (vio)" section: a single
-/// line with the display name, stored tag name, current value, and an edit
-/// button.
+/// line with a tag icon in the leading slot, the display name, and the
+/// current value + edit button pinned to the tail.
 class _HubVirtualTagCard extends StatelessWidget {
   const _HubVirtualTagCard({
     required this.tag,
@@ -1214,6 +1214,11 @@ class _HubVirtualTagCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         child: Row(
           children: [
+            const IconAvatar(icon: Icons.tag, size: 32),
+            const SizedBox(width: 12),
+            // The name takes every bit of space the tail group does not use,
+            // so the tail (value, edit button) stays pinned to the right
+            // edge even when the texts are short.
             Expanded(
               child: Text(
                 name.isNotEmpty ? name : tag.tagName,
@@ -1224,15 +1229,22 @@ class _HubVirtualTagCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                tag.value,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.end,
-                style:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              ),
+            // Tail group: intrinsic width (capped, with ellipsis when the
+            // value is long), so the edit button sits flush right.
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    tag.value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.end,
+                    style:
+                        const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(width: 4),
             IconButton(
