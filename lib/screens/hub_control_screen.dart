@@ -452,8 +452,23 @@ class _HubControlScreenState extends State<HubControlScreen> {
     _editDialogOpen = true;
     try {
       final module = ModuleStore.shared.byId(widget.module.id) ?? widget.module;
+      // The Control API transport (TLS vs plaintext) before the edit, for
+      // the restart check below: a toggled TLS setting only takes effect on
+      // sockets opened after the save.
+      final tlsBefore = moduleWantsTls(module);
       final saved = await showEditModuleInfoDialog(context, module);
-      if (saved && mounted) setState(() {});
+      if (saved && mounted) {
+        final live =
+            ModuleStore.shared.byId(widget.module.id) ?? widget.module;
+        if (moduleWantsTls(live) != tlsBefore) {
+          // Transport changed: close this screen's open Hub socket and
+          // reconnect with the new endpoint/transport settings (the login
+          // state resets with the dropped session).
+          await _connectAndRefresh();
+        } else {
+          setState(() {});
+        }
+      }
     } finally {
       _editDialogOpen = false;
     }

@@ -335,6 +335,11 @@ Future<bool> showEditModuleInfoDialog(
   );
 
   if (result?.saved == true) {
+    // The Control API transport (TLS vs plaintext) before this save, for the
+    // change check below: the stored explicit choice when the user made one,
+    // otherwise the module's natural decision (code-level switch, advertised
+    // `API_TLS` flag).
+    final tlsBefore = moduleWantsTls(module);
     if (result!.name.isNotEmpty) module.name = result.name;
     if (result.ip.isNotEmpty) module.ipAddress = result.ip;
     if (result.type != null) module.type = result.type!;
@@ -359,11 +364,16 @@ Future<bool> showEditModuleInfoDialog(
     // cached IP is fresh before the services reconnect (no DNS on connect).
     await ModuleAddressResolver.resolve(module);
 
-    // Persist the edit and reflect the new endpoint in the running services:
-    // commit() notifies the status services, and refreshOne() re-probes the
-    // module over the changed address/port so it takes effect immediately.
+    // Persist the edit and reflect the new endpoint in the running services.
+    // A toggled TLS transport invalidates every socket opened for the module
+    // (they dial the old transport): close them all and re-probe so the
+    // persistent units reconnect with the new settings.
     await ModuleStore.shared.commit();
-    await ModuleStatusService.shared.refreshOne(module);
+    if (moduleWantsTls(module) != tlsBefore) {
+      await ModuleStatusService.shared.restartModuleSockets(module);
+    } else {
+      await ModuleStatusService.shared.refreshOne(module);
+    }
   }
   return result?.saved == true;
 }

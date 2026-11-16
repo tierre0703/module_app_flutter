@@ -1110,6 +1110,19 @@ class ModuleStatusService {
     _disposeJsonUnit(moduleId);
   }
 
+  /// Closes every socket held for [module] (the persistent unit and its
+  /// auto-reconnect timers, plus any JSON/HTTP unit) and immediately
+  /// re-probes the module so the units are recreated with the module's
+  /// current endpoint and transport settings. Used after a configuration
+  /// edit that changes how the module is dialed (e.g. the TLS toggle in the
+  /// edit-module-info dialog): the old sockets dial the old transport, so
+  /// they must be closed, not merely refreshed.
+  Future<bool> restartModuleSockets(DeviceModule module) async {
+    _units.remove(module.id)?.dispose();
+    _disposeJsonUnit(module.id);
+    return refreshOne(module);
+  }
+
   /// Closes every persistent socket (and stops each unit's auto-reconnect)
   /// while keeping the units themselves alive so the app can resume quickly.
   /// Used by the lifecycle scheduler when the app moves to the background,
@@ -1927,6 +1940,12 @@ class ModuleStatusService {
     if (existing is SoleuxJsonService &&
         existing.connection.port == port &&
         existing.framing == framing &&
+        // The transport itself (TLS vs plaintext) must match too: the
+        // CA-asset/device-id fields below are identical whether the dial is
+        // TLS or plaintext, so without this check a transport toggle (e.g.
+        // from the edit-module-info dialog) would reuse a socket dialing the
+        // old transport.
+        (existing.connection.tls != null) == (tls != null) &&
         existing.connection.tls?.caAsset == tls?.caAsset &&
         existing.connection.tls?.expectedDeviceId == tls?.expectedDeviceId) {
       return existing;
